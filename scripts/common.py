@@ -72,9 +72,16 @@ def load_config():
 
 
 def applied_far(cfg):
-    """용도지역명 → 적용용적률(%). 2025 한시완화 스위치 반영 (D-005)."""
+    """용도지역명 → 임대형기숙사에 적용할 용적률(%).
+
+    1) 2025 한시완화 스위치 반영 (D-005)
+    2) 주거용 용적률 상한으로 클램프 (D-011)
+       상업지역은 조례상 주거용 400% 이하. 이걸 빼면 상업지역이 순위를 독식한다.
+    """
     relaxed = cfg["zoning"]["relaxation_2025"]["enabled"]
     out = {}
     for name, v in cfg["zoning"]["zones"].items():
-        out[name] = (v["far_relaxed"] or v["far"]) if relaxed else v["far"]
+        far = (v["far_relaxed"] or v["far"]) if relaxed else v["far"]
+        cap = v.get("far_residential")
+        out[name] = min(far, cap) if cap is not None else far
     return out

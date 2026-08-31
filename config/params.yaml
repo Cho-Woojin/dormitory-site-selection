@@ -27,27 +27,36 @@ zoning:
     valid_from: "2025-05-19"
     valid_until: "2028-05-18"
 
+  # far_residential: 주거용 부분 용적률 상한 (D-011)
+  #   [조례] 서울시 도시계획 조례 별표 (제31조제1항제1호, 제55조제3항 관련)
+  #          "상업지역 내 주거복합건축물의 주거용 부분 용적률은 400% 이하"
+  #   임대형기숙사는 준주택 = 주거용이므로 상업지역에서 400%를 넘을 수 없다.
+  #   null 이면 상한 없음(용도지역 용적률을 그대로 사용).
   zones:
-    제1종전용주거지역:   { far: 100,  far_relaxed: null, bcr: 50, housing_ok: false }
-    제2종전용주거지역:   { far: 120,  far_relaxed: null, bcr: 40, housing_ok: true  }
-    제1종일반주거지역:   { far: 150,  far_relaxed: null, bcr: 60, housing_ok: true  }
-    제2종일반주거지역:   { far: 200,  far_relaxed: 250,  bcr: 60, housing_ok: true  }
-    제3종일반주거지역:   { far: 250,  far_relaxed: 300,  bcr: 50, housing_ok: true  }
-    준주거지역:          { far: 400,  far_relaxed: null, bcr: 60, housing_ok: true  }
-    근린상업지역:        { far: 600,  far_relaxed: null, bcr: 60, housing_ok: true  }
-    일반상업지역:        { far: 800,  far_relaxed: null, bcr: 60, housing_ok: true  }
-    중심상업지역:        { far: 1000, far_relaxed: null, bcr: 60, housing_ok: true  }
-    유통상업지역:        { far: 600,  far_relaxed: null, bcr: 60, housing_ok: true  }
-    준공업지역:          { far: 400,  far_relaxed: null, bcr: 60, housing_ok: true  }
-    전용공업지역:        { far: 200,  far_relaxed: null, bcr: 60, housing_ok: false }
-    일반공업지역:        { far: 200,  far_relaxed: null, bcr: 60, housing_ok: false }
-    자연녹지지역:        { far: 50,   far_relaxed: null, bcr: 20, housing_ok: false }
-    생산녹지지역:        { far: 50,   far_relaxed: null, bcr: 20, housing_ok: false }
-    보전녹지지역:        { far: 50,   far_relaxed: null, bcr: 20, housing_ok: false }
-    개발제한구역:        { far: 0,    far_relaxed: null, bcr: 0,  housing_ok: false }
+    제1종전용주거지역:   { far: 100,  far_relaxed: null, far_residential: null, bcr: 50, housing_ok: false }
+    제2종전용주거지역:   { far: 120,  far_relaxed: null, far_residential: null, bcr: 40, housing_ok: true  }
+    제1종일반주거지역:   { far: 150,  far_relaxed: null, far_residential: null, bcr: 60, housing_ok: true  }
+    제2종일반주거지역:   { far: 200,  far_relaxed: 250,  far_residential: null, bcr: 60, housing_ok: true  }
+    제3종일반주거지역:   { far: 250,  far_relaxed: 300,  far_residential: null, bcr: 50, housing_ok: true  }
+    준주거지역:          { far: 400,  far_relaxed: null, far_residential: null, bcr: 60, housing_ok: true  }
+    근린상업지역:        { far: 600,  far_relaxed: null, far_residential: 400,  bcr: 60, housing_ok: true  }
+    일반상업지역:        { far: 800,  far_relaxed: null, far_residential: 400,  bcr: 60, housing_ok: true  }
+    중심상업지역:        { far: 1000, far_relaxed: null, far_residential: 400,  bcr: 60, housing_ok: true  }
+    유통상업지역:        { far: 600,  far_relaxed: null, far_residential: 400,  bcr: 60, housing_ok: true  }
+    준공업지역:          { far: 400,  far_relaxed: null, far_residential: null, bcr: 60, housing_ok: true  }
+    전용공업지역:        { far: 200,  far_relaxed: null, far_residential: null, bcr: 60, housing_ok: false }
+    일반공업지역:        { far: 200,  far_relaxed: null, far_residential: null, bcr: 60, housing_ok: false }
+    자연녹지지역:        { far: 50,   far_relaxed: null, far_residential: null, bcr: 20, housing_ok: false }
+    생산녹지지역:        { far: 50,   far_relaxed: null, far_residential: null, bcr: 20, housing_ok: false }
+    보전녹지지역:        { far: 50,   far_relaxed: null, far_residential: null, bcr: 20, housing_ok: false }
+    개발제한구역:        { far: 0,    far_relaxed: null, far_residential: null, bcr: 0,  housing_ok: false }
+
+  # 미반영: 상업지역 비주거 의무비율 (연면적 10% 이상, 2025년 20%→10% 완화).
+  # 반영하면 상업지역 주거 연면적이 한 번 더 줄어든다. 상가 수익을 0으로 보는 것도
+  # 부정확하므로 일단 두지 않는다 — Q-10 논의 참조.
 
 # ---------------------------------------------------------------------------
-# 하드 필터 (METHODOLOGY §1) — 실측 퍼널: 52,970 → 5,238 필지 (9.9%)
+# 하드 필터 (METHODOLOGY §1) — 실측 퍼널: 52,970 → 4,896 필지 (9.2%)
 # ---------------------------------------------------------------------------
 filters:
   min_rooms: 20                    # [법령] 건축법 시행령 별표1 2호 라목
@@ -61,14 +70,14 @@ filters:
 
   # F4 접도 — 토지특성정보 A24
   # "(불)" = 자동차 통행 불가. 임대형기숙사 신축 사실상 불가능하므로 제외.
-  excluded_road_access: [맹지, 세로한면(불), 세로각지(불)]     # -8,021 필지
-  # 주의: '지정되지않음'(지목 '대' 중 2,569필지)은 현재 통과시킨다.
-  #       판정 불가일 뿐 맹지라는 뜻은 아니다. 웹에서 별도 플래그로 표시할 것.
+  excluded_road_access: [맹지, 세로한면(불), 세로각지(불)]
+  # '지정되지않음'은 통과시키고 W_ROAD_UNKNOWN 플래그만 단다.
+  # 실측 결과 미지정 12,123건 중 최종 후보에 남는 건 2건뿐이라 쟁점이 아니다 (Q-07 종결).
 
 # ---------------------------------------------------------------------------
 # S1 · 사업성  (D-007)
 # 분모 = 총사업비 − 보증금총액 (보증금은 무이자 조달자금이므로 순투자금을 줄인다)
-# 실측 결과: 중위 4.1% (5~95%: 3.0~5.4%) — 개발사업 통상 기대치 범위
+# 실측 결과: 중위 4.0% (5~95%: 2.7~5.0%) — 개발사업 통상 기대치 범위
 # ---------------------------------------------------------------------------
 profitability:
   denominator: net_equity          # net_equity | total_cost | land_cost
@@ -140,7 +149,7 @@ transit:
 # 3순위까지만 사용. 동급 내 최종 타이브레이크는 S1 원값. (D-008)
 # ---------------------------------------------------------------------------
 ranking:
-  tol_profitability_pct: 5    # 실측: 상위 200 중 149개가 순수 사업성 순위 유지
+  tol_profitability_pct: 5    # 실측: 상위 200 중 159개가 순수 사업성 순위 유지
   tol_solar_pct: 10
 
 tiles:
