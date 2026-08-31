@@ -55,6 +55,7 @@ F_ROOMS = 1 << 4    # F5 20실 미만
 F_PRICE = 1 << 5    # 공시지가 결측/0 — 사업성 계산 불가
 W_ROAD_UNKNOWN = 1 << 8  # 경고: 도로측면 '지정되지않음' (제외는 안 함, Q-07)
 W_ZONE2 = 1 << 9         # 경고: 용도지역 2개에 걸침 (zone1을 채택)
+W_SUBDIVIDED = 1 << 10   # 경고: 구분소유 추정 (다세대) — 전 세대 동의 필요 (D-014)
 
 FILTER_LABELS = [
     (F_JIMOK, "F6 지목≠대"),
@@ -85,3 +86,80 @@ def applied_far(cfg):
         cap = v.get("far_residential")
         out[name] = min(far, cap) if cap is not None else far
     return out
+
+
+def load_buildings(cfg, verbose=True):
+    """성북구 건물 + 높이 3단계 폴백 (T-204, D-012). 결과를 interim에 캐시한다.
+
+    사업성(철거비)과 일조 양쪽에서 쓰므로 공유한다.
+      1) A16 실측 높이
+      2) A26 지상층수 × 층고
+      3) 폴리곤 바닥면적 구간별 중위 층수 × 층고
+    """
+    import geopandas as gpd
+    import numpy as np
+    import pandas as pd
+
+    cache = INTERIM / "buildings.gpkg"
+    if cache.exists():
+        b = gpd.read_file(cache, layer="buildings")
+        if verbose:
+            print(f"  건물 캐시 사용: {len(b):,}동")
+        return b
+
+    S = cfg["solar"]
+    b = gpd.read_file(
+        BUILDINGS_SHP, encoding=ENCODING, where=f"A23 = '{cfg['region']['sgg_code']}'"
+    )
+    b = b[list(BUILDING_COLS) + ["geometry"]].rename(columns=BUILDING_COLS)
+    for c in ["height_m", "floors_up"]:
+        b[c] = pd.to_numeric(b[c], errors="coerce")
+    b["footprint_sqm"] = b.geometry.area
+    n = len(b)
+
+    bad = b["height_m"].lt(0) | b["height_m"].gt(200)
+    if bad.any():
+        if verbose:
+            print(f"  이상치 높이 {int(bad.sum())}건 → 결측 처리 "
+                  f"(min {b.loc[bad, 'height_m'].min():.1f}m)")
+        b.loc[bad, "height_m"] = np.nan
+
+    fh = S["default_floor_height_m"]
+    h = np.full(n, np.nan)
+    src = np.full(n, "", dtype=object)
+
+    m1 = b["height_m"].gt(0).to_numpy()
+    h[m1], src[m1] = b.loc[m1, "height_m"], "실측"
+    m2 = ~m1 & b["floors_up"].gt(0).to_numpy()
+    h[m2], src[m2] = b.loc[m2, "floors_up"] * fh, "층수추정"
+    m3 = ~m1 & ~m2
+
+    U = S["unknown_building"]
+    if U["method"] == "footprint_bin":
+        edges = [x["max"] for x in U["footprint_bins"][:-1]]
+        floors = np.array([x["floors"] for x in U["footprint_bins"]])
+        idx = np.searchsorted(edges, b["footprint_sqm"].to_numpy(), side="left")
+        h[m3], src[m3] = floors[idx][m3] * fh, "면적추정"
+    elif U["method"] == "exclude":
+        src[m3] = "제외"
+    else:
+        raise SystemExit(f"unknown_building.method 값이 잘못됨: {U['method']}")
+
+    b["height_m"], b["height_src"] = h, src
+    if verbose:
+        print("  높이 출처별 (T-204)")
+        for label in ["실측", "층수추정", "면적추정", "제외"]:
+            k = int((src == label).sum())
+            if k:
+                hh = b.loc[src == label, "height_m"]
+                extra = f"  중위 {hh.median():.1f}m" if hh.notna().any() else ""
+                print(f"    {label:<8} {k:>7,}  {k / n:>5.1%}{extra}")
+
+    b = b[b["height_m"].notna()].copy()
+    # 철거 연면적 추정용 — 바닥면적 × 추정 층수
+    b["est_gfa"] = b["footprint_sqm"] * np.maximum(b["height_m"] / fh, 1).round()
+    INTERIM.mkdir(parents=True, exist_ok=True)
+    b.to_file(cache, driver="GPKG", layer="buildings")
+    if verbose:
+        print(f"  → 사용 건물 {len(b):,}동 (캐시 저장)")
+    return b

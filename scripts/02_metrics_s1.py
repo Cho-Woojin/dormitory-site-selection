@@ -12,7 +12,8 @@ import pandas as pd
 
 from common import (
     F_JIMOK, F_LANDUSE, F_PRICE, F_ROAD, F_ROOMS, F_ZONE,
-    FILTER_LABELS, INTERIM, W_ROAD_UNKNOWN, W_ZONE2, load_config,
+    FILTER_LABELS, INTERIM, W_ROAD_UNKNOWN, W_SUBDIVIDED, W_ZONE2,
+    load_buildings, load_config,
 )
 
 
@@ -35,6 +36,17 @@ def realization_factor(g, cfg):
                      * terrain.fillna(r["slope_factor"]["지정되지않음"])
 
 
+def demolition_gfa(g, cfg):
+    """필지 위 기존 건물의 추정 연면적 합 (D-014 철거비 산정용)."""
+    b = load_buildings(cfg)
+    pts = b[["est_gfa", "geometry"]].copy()
+    pts["geometry"] = b.geometry.representative_point()
+    j = gpd.sjoin(pts, g[["pnu", "geometry"]], predicate="within", how="inner")
+    per = j.groupby("pnu")["est_gfa"].sum()
+    n_bld = j.groupby("pnu").size()
+    return g["pnu"].map(per).fillna(0.0), g["pnu"].map(n_bld).fillna(0).astype(int)
+
+
 def main():
     cfg = load_config()
     P, F = cfg["profitability"], cfg["filters"]
@@ -42,6 +54,9 @@ def main():
     g = gpd.read_file(INTERIM / "parcels.gpkg", layer="parcels")
     print("═" * 62)
     print(f"입력: {len(g):,} 필지\n")
+
+    print("기존 건물 / 철거 연면적 (D-014)")
+    g["demo_gfa_sqm"], g["n_buildings"] = demolition_gfa(g, cfg)
 
     # ── 파생값 ──────────────────────────────────────────────────────────
     print("실현계수 (D-006)")
@@ -65,6 +80,7 @@ def main():
     # 경고 비트 — 제외하지 않고 표시만 한다
     flags |= np.where(g["road_side"].eq("지정되지않음"), W_ROAD_UNKNOWN, 0)
     flags |= np.where(g["straddles_zone"], W_ZONE2, 0)
+    flags |= np.where(g["landuse"].isin(F["flag_subdivided_landuse"]), W_SUBDIVIDED, 0)
     g["flags"] = flags
 
     excl = F_JIMOK | F_ZONE | F_LANDUSE | F_ROAD | F_PRICE | F_ROOMS
@@ -91,14 +107,19 @@ def main():
           f" (후보 중 {int((road_unknown & g['is_candidate']).sum()):,}) — Q-07")
     print(f"    경고: 용도지역 걸침 {int(zone2.sum()):,}"
           f" (후보 중 {int((zone2 & g['is_candidate']).sum()):,})")
+    sub = (g["flags"] & W_SUBDIVIDED).astype(bool)
+    print(f"    경고: 구분소유 추정(다세대) {int(sub.sum()):,}"
+          f" (후보 중 {int((sub & g['is_candidate']).sum()):,}) — 웹 토글 대상")
 
     # ── T-302 S₁ 사업성 ─────────────────────────────────────────────────
     print("\n" + "═" * 62)
     print("T-302  S₁ 사업성")
     land = g["price_krw_sqm"] * g["area_sqm"] * P["land_price_multiplier"]
     build = g["gfa_sqm"] * P["unit_construction_cost"] * (1 + P["soft_cost_ratio"])
+    demo = g["demo_gfa_sqm"] * P["demolition_cost_per_sqm"]
     g["cost_land"] = land
-    g["cost_total"] = land + build
+    g["cost_demo"] = demo
+    g["cost_total"] = land + build + demo
     g["deposit"] = g["rooms"] * P["deposit_per_room"]
     g["net_equity"] = g["cost_total"] - g["deposit"]
 
@@ -117,6 +138,8 @@ def main():
     print(f"  실현계수 중위   : {c['realization'].median():.2f}"
           f"  (범위 {c['realization'].min():.2f} ~ {c['realization'].max():.2f})")
     print(f"  토지비 비중 중위: {(c['cost_land'] / c['cost_total']).median():.0%}")
+    print(f"  철거비 비중 중위: {(c['cost_demo'] / c['cost_total']).median():.1%}"
+          f"  (기존 건물 있는 필지 {int(c['n_buildings'].gt(0).sum()):,} / {len(c):,})")
     print(f"  보증금 비중 중위: {(c['deposit'] / c['cost_total']).median():.0%}")
     print(f"\n  {'분모':<22}{'중위':>8}{'5%':>9}{'95%':>9}")
     for col, label in [

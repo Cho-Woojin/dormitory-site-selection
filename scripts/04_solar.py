@@ -15,70 +15,7 @@ import numpy as np
 import pandas as pd
 from shapely import STRtree
 
-from common import BUILDING_COLS, BUILDINGS_SHP, ENCODING, INTERIM, load_config
-
-
-def normalize_heights(cfg):
-    """T-204 — 건물 높이를 3단계 폴백으로 확정한다."""
-    S = cfg["solar"]
-    sgg = cfg["region"]["sgg_code"]
-
-    b = gpd.read_file(BUILDINGS_SHP, encoding=ENCODING, where=f"A23 = '{sgg}'")
-    b = b[list(BUILDING_COLS) + ["geometry"]].rename(columns=BUILDING_COLS)
-    for c in ["height_m", "floors_up"]:
-        b[c] = pd.to_numeric(b[c], errors="coerce")
-    b["footprint_sqm"] = b.geometry.area
-    n = len(b)
-    print(f"  성북구 건물: {n:,}동   좌표계 {b.crs.to_string()}")
-
-    # 이상치 — 음수 높이, 비현실적 고층
-    bad = b["height_m"].lt(0) | b["height_m"].gt(200)
-    if bad.any():
-        print(f"  이상치 높이 {int(bad.sum())}건 → 결측 처리 "
-              f"(min {b.loc[bad, 'height_m'].min():.1f}m)")
-        b.loc[bad, "height_m"] = np.nan
-
-    fh = S["default_floor_height_m"]
-    src = np.full(n, "", dtype=object)
-    h = np.full(n, np.nan)
-
-    m1 = b["height_m"].gt(0).to_numpy()
-    h[m1] = b.loc[m1, "height_m"]
-    src[m1] = "실측"
-
-    m2 = ~m1 & b["floors_up"].gt(0).to_numpy()
-    h[m2] = b.loc[m2, "floors_up"] * fh
-    src[m2] = "층수추정"
-
-    m3 = ~m1 & ~m2
-    U = S["unknown_building"]
-    if U["method"] == "footprint_bin":
-        # 바닥면적 구간 → 중위 층수 (D-012). np.searchsorted 로 벡터 처리.
-        edges = [x["max"] for x in U["footprint_bins"][:-1]]
-        floors = np.array([x["floors"] for x in U["footprint_bins"]])
-        idx = np.searchsorted(edges, b["footprint_sqm"].to_numpy(), side="left")
-        h[m3] = floors[idx][m3] * fh
-        src[m3] = "면적추정"
-    elif U["method"] == "exclude":
-        src[m3] = "제외"
-    else:
-        raise SystemExit(f"unknown_building.method 값이 잘못됨: {U['method']}")
-
-    b["height_m"] = h
-    b["height_src"] = src
-
-    print(f"\n  높이 출처별 (T-204 완료조건)")
-    for label in ["실측", "층수추정", "면적추정", "제외"]:
-        k = int((src == label).sum())
-        if k:
-            hh = b.loc[src == label, "height_m"]
-            extra = f"  중위 {hh.median():.1f}m" if hh.notna().any() else ""
-            print(f"    {label:<8} {k:>7,}  {k / n:>5.1%}{extra}")
-    print(f"    {'이상치>200m':<8} {int(b['height_m'].gt(200).sum()):>7,}")
-
-    b = b[b["height_m"].notna()].copy()
-    print(f"  → 일조 계산에 사용할 건물: {len(b):,}동")
-    return b
+from common import INTERIM, load_buildings, load_config
 
 
 def solar_openness(g, b, cfg):
@@ -139,8 +76,7 @@ def main():
 
     print("═" * 62)
     print("T-204  건물 높이 정규화")
-    b = normalize_heights(cfg)
-    b.to_file(INTERIM / "buildings.gpkg", driver="GPKG", layer="buildings")
+    b = load_buildings(cfg)
 
     print("\n" + "═" * 62)
     print("T-303  일조환경 (S₂)")
