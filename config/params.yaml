@@ -126,10 +126,21 @@ solar:
   sector_step_deg: 15
   # [실측] 성북구 건물 13,658동의 높이/층수 중위 3.25m (IQR 2.94~3.75)
   default_floor_height_m: 3.25     # 높이 결측·층수 있음 → 층수 × 이 값
-  # 높이·층수 둘 다 없는 건물 10,009동(24.8%)의 처리 — Q-09 미결
-  #   assumed_floors: 층수도 없을 때 가정할 층수. 빼면 일조가 낙관적으로 부풀려진다.
-  unknown_building_floors: 2       # [잠정] 유효 건물의 중위 층수와 동일
-  drop_unknown_buildings: false    # true 로 두면 안 된다 (낙관 편향)
+  # 높이·층수 둘 다 없는 건물 10,009동(24.8%)의 처리 — D-012
+  #   용적률·건폐율로 추론하려 했으나 그 건물들은 해당 필드도 비어 있다(2건뿐).
+  #   대신 폴리곤 바닥면적으로 추정한다 — 바닥면적은 100% 존재하고
+  #   corr(log 바닥면적, 층수) = +0.52 로 예측력이 있다. [실측]
+  unknown_building:
+    method: footprint_bin          # footprint_bin | exclude
+    # 바닥면적(㎡) 구간별 중위 층수. 성북구 층수 유효 건물 30,349동에서 산출. [실측]
+    footprint_bins:
+      - { max: 20,   floors: 1 }
+      - { max: 40,   floors: 1 }
+      - { max: 60,   floors: 2 }
+      - { max: 100,  floors: 2 }
+      - { max: 200,  floors: 3 }
+      - { max: 500,  floors: 4 }
+      - { max: null, floors: 10 }
   road_bonus: 0.25                 # 남측 접도 시 최대 가산율
   road_bonus_full_width_m: 12.0
   assume_future_buildout: true     # 인접 나대지에 상한 건물 가정 (보수적)
