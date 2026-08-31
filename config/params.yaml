@@ -1,0 +1,124 @@
+# 임대형기숙사 적합 필지 탐색 — 파라미터
+#
+# 여기 있는 값은 대부분 "가정"이다. 성북구 실제 시세로 검증하기 전까지
+# 결과를 의사결정 근거로 쓰지 말 것.
+# 근거가 확인된 값에는 출처를 주석으로 남긴다.
+
+region:
+  name: 성북구
+  sgg_code: "11290"          # 법정동 시군구코드
+  analysis_crs: "EPSG:5186"  # 중부원점 GRS80 — 거리/면적 계산은 반드시 이 좌표계
+  output_crs: "EPSG:4326"    # 웹 출력
+  station_buffer_m: 1500     # 구 경계 밖 역도 이 범위까지 수집
+
+# ---------------------------------------------------------------------------
+# 용도지역별 용적률 / 건폐율 / 공동주택(기숙사) 허용 여부
+#
+# ⚠️ T-103 미완료: 아래 표는 서울특별시 도시계획조례 기준의 "잠정값"이다.
+#    조례 원문 대조 후 각 항목에 조문 번호를 주석으로 달 것.
+# ---------------------------------------------------------------------------
+zoning:
+  # 2025-05-19 ~ 2028-05-18 서울시 소규모 건축물 용적률 한시 완화 (D-005)
+  # 2종일반 200→250%, 3종일반 250→300%. 오늘 기준 유효하므로 기본 ON.
+  relaxation_2025:
+    enabled: true
+    valid_from: "2025-05-19"
+    valid_until: "2028-05-18"
+
+  zones:
+    #                      far_base  far_relaxed  bcr   기숙사가능
+    제1종전용주거지역:   { far: 100,  far_relaxed: null, bcr: 50, housing_ok: false }
+    제2종전용주거지역:   { far: 120,  far_relaxed: null, bcr: 40, housing_ok: true  }
+    제1종일반주거지역:   { far: 150,  far_relaxed: null, bcr: 60, housing_ok: true  }
+    제2종일반주거지역:   { far: 200,  far_relaxed: 250,  bcr: 60, housing_ok: true  }
+    제3종일반주거지역:   { far: 250,  far_relaxed: 300,  bcr: 50, housing_ok: true  }
+    준주거지역:          { far: 400,  far_relaxed: null, bcr: 60, housing_ok: true  }
+    근린상업지역:        { far: 600,  far_relaxed: null, bcr: 60, housing_ok: true  }
+    일반상업지역:        { far: 800,  far_relaxed: null, bcr: 60, housing_ok: true  }
+    중심상업지역:        { far: 1000, far_relaxed: null, bcr: 60, housing_ok: true  }
+    준공업지역:          { far: 400,  far_relaxed: null, bcr: 60, housing_ok: true  }
+    자연녹지지역:        { far: 50,   far_relaxed: null, bcr: 20, housing_ok: false }
+    생산녹지지역:        { far: 50,   far_relaxed: null, bcr: 20, housing_ok: false }
+    보전녹지지역:        { far: 50,   far_relaxed: null, bcr: 20, housing_ok: false }
+
+# ---------------------------------------------------------------------------
+# 하드 필터 (METHODOLOGY §1)
+# 여기 걸리면 순위에서 제외된다. 웹에서 "제외 필지 보기"로 확인 가능.
+# ---------------------------------------------------------------------------
+filters:
+  min_rooms: 20              # 건축법 시행령 별표1 2호 라목 — 임대형기숙사 요건
+  min_road_width_m: 4.0      # 건축법 제44조 접도의무
+  min_road_contact_m: 2.0
+  max_slope_deg: 25          # 초과 시 제외. 성북구 구릉지 대응 (잠정)
+  exclude_jimok: [학교용지, 종교용지, 사적지, 묘지, 하천, 구거, 제방, 도로, 철도용지]
+
+# ---------------------------------------------------------------------------
+# S1 · 사업성
+# ---------------------------------------------------------------------------
+profitability:
+  denominator: total_cost    # total_cost | land_cost  (미결 Q-02)
+
+  land_price_multiplier: 1.5 # 공시지가 → 추정 실거래가 배율. 통상 1.4~1.7 (미결 Q-02)
+  realization_factor: 0.85   # 용적률 미실현분 반영 (미결 Q-01)
+
+  unit_construction_cost: 2_500_000   # 원/㎡ — 연면적 기준
+  soft_cost_ratio: 0.20               # 설계·감리·금융 등 부대비
+
+  net_area_ratio: 0.65       # 전용률 (연면적 → 실면적)
+  room_area_sqm: 16.0        # 1실 면적 가정
+  monthly_rent_per_sqm: 25_000        # 원/㎡/월 — 실면적 기준
+  vacancy_rate: 0.05
+  opex_ratio: 0.25
+
+# ---------------------------------------------------------------------------
+# S2 · 일조환경
+# ---------------------------------------------------------------------------
+solar:
+  latitude: 37.59                  # 성북구 대략 위도
+  winter_solstice_altitude: 28.97  # = 90 − 37.59 − 23.44 (동지 정오 태양고도)
+  search_radius_m: 50
+  sector_start_deg: 135            # 남동
+  sector_end_deg: 225              # 남서
+  sector_step_deg: 15
+  default_floor_height_m: 3.0      # 건물 높이 결측 시 층수 × 이 값
+  road_bonus: 0.25                 # 남측 접도 시 최대 25% 가산
+  road_bonus_full_width_m: 12.0    # 이 폭 이상이면 보너스 100% 적용
+  assume_future_buildout: true     # 인접 나대지에 용도지역 상한 건물이 설 것으로 가정 (보수적)
+
+# ---------------------------------------------------------------------------
+# S3 · 역세권 등급 (계단식)
+# ---------------------------------------------------------------------------
+transit:
+  distance_metric: euclidean   # euclidean | walking (2단계에서 osmnx 도보거리)
+  grades:
+    A: 250
+    B: 500
+    C: 750
+    D: 1000
+    # 초과는 E
+  include_under_construction: false   # 동북선 경전철 (미결 Q-05)
+
+# ---------------------------------------------------------------------------
+# S4 · 수요 지표
+# ---------------------------------------------------------------------------
+demand:
+  method: university_gravity   # 미결 Q-06
+  gravity_beta: 1.5
+  min_distance_m: 200          # 0 나눗셈 방지 + 캠퍼스 바로 옆 과대평가 방지
+
+# ---------------------------------------------------------------------------
+# 계층 정렬 오차범위 (METHODOLOGY §0) — 웹의 핵심 슬라이더
+# 백분위 %p 단위. 0이면 해당 단계에서 동급 없음 = 앞 지표 단독 정렬.
+# ---------------------------------------------------------------------------
+ranking:
+  tol_profitability_pct: 5    # 미결 Q-04
+  tol_solar_pct: 10
+
+# ---------------------------------------------------------------------------
+# 타일 빌드
+# ---------------------------------------------------------------------------
+tiles:
+  min_zoom: 11
+  max_zoom: 17
+  output: web/data/parcels.pmtiles
+  max_size_mb: 50
