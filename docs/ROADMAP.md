@@ -11,8 +11,8 @@
 
 - [x] **T-001** 저장소 구조·문서·설정 생성
 - [x] **T-002** taste-skill 을 `.claude/skills/` 에 설치
-- [ ] **T-003** Python 환경 구성 — `uv venv` + `requirements.txt` 설치
-  - 완료조건: `python -c "import geopandas, shapely, pyproj, rasterio; print('ok')"` 통과
+- [x] **T-003** Python 환경 — geopandas·shapely·pyproj·requests·dotenv 동작 확인
+  - rasterio·osmnx·elevation은 D-008/D-010으로 불필요해져 미설치
 - [ ] **T-004** 타일 툴체인 설치 — `brew install tippecanoe`
   - 완료조건: `tippecanoe --version` 출력 확인
 - [ ] **T-005** 첫 커밋 및 GitHub 푸시
@@ -45,8 +45,8 @@
 - [x] **T-204** 건물 높이 정규화 — `scripts/04_solar.py`
   - ✅ 실측 13,666(33.9%) / 층수추정 16,693(41.4%) / **면적추정** 10,009(24.8%)
   - ✅ 음수 높이 1동 결측 처리, 200m 초과 0건. 미상 건물은 D-012 바닥면적 추정
-- [ ] **T-205** 필지 마스터 → `data/interim/parcels.gpkg`
-  - 완료조건: 52,970행 유지, 필수 컬럼 결측 0 (공시지가 0원 19건은 예외 처리)
+- [x] **T-205** 필지 마스터 → `data/interim/parcels.gpkg`
+  - ✅ 52,970행, 필수 컬럼 결측 0 (공시지가 0원 19건은 `F_PRICE` 플래그로 제외 처리)
 - [x] **T-206** AL_D151 개별공시지가 조인 — 조인율 **100%** (52,951/52,970)
   - **결과: A25와 값이 전부 동일 (상이 0건).** 기준일 차이는 추출일이었을 뿐
     공시 자체는 같은 2026-04-30 건이다. AL_D151 다운로드는 사실상 불필요했다.
