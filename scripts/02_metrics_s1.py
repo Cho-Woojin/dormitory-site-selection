@@ -13,7 +13,7 @@ import pandas as pd
 from common import (
     F_JIMOK, F_LANDUSE, F_PRICE, F_ROAD, F_ROOMS, F_ZONE,
     FILTER_LABELS, INTERIM, W_INDUSTRIAL, W_ROAD_UNKNOWN, W_SUBDIVIDED, W_ZONE2,
-    load_buildings, load_config,
+    load_buildings, load_config, rent_index,
 )
 
 
@@ -57,6 +57,9 @@ def main():
 
     print("기존 건물 / 철거 연면적 (D-014)")
     g["demo_gfa_sqm"], g["n_buildings"] = demolition_gfa(g, cfg)
+
+    print("임대료 지역지수 (D-024)")
+    g["rent_index"], _rm = rent_index(g, cfg)
 
     # ── 파생값 ──────────────────────────────────────────────────────────
     print("실현계수 (D-006)")
@@ -132,7 +135,9 @@ def main():
     g["deposit"] = g["rooms"] * P["deposit_per_room"]
     g["net_equity"] = g["cost_total"] - g["deposit"]
 
-    revenue = g["rooms"] * P["monthly_rent_per_room"] * 12 * (1 - P["vacancy_rate"])
+    # 임대료는 기준 자치구 값 × 지역지수 (D-024)
+    g["rent_applied"] = P["monthly_rent_per_room"] * g["rent_index"]
+    revenue = g["rooms"] * g["rent_applied"] * 12 * (1 - P["vacancy_rate"])
     g["noi"] = revenue * (1 - P["opex_ratio"])
 
     for col, denom in [
@@ -165,7 +170,8 @@ def main():
     print("\n  자치구별 수익률 중위")
     for nm, sub_c in c.groupby("sgg_nm"):
         print(f"    {nm:<6} {len(sub_c):>6,}필지  {sub_c['s1_net_equity'].median():>6.2%}"
-              f"  공시지가 중위 {sub_c['price_krw_sqm'].median():>10,.0f}원/㎡")
+              f"  공시지가 중위 {sub_c['price_krw_sqm'].median():>10,.0f}원/㎡"
+              f"  임대료 중위 {sub_c['rent_applied'].median() / 1e4:>5.0f}만원")
 
     print("\n  후보 용도지역 분포:")
     ct = pd.crosstab(c["zone1"], c["sgg_nm"])

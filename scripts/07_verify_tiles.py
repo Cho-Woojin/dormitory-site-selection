@@ -82,7 +82,8 @@ def main():
     for tk, sk, scale in [("a", "area_sqm", SC["a"]), ("f", "far_pct", 1),
                           ("t", "stn_dist_m", SC["t"]), ("d", "demo_gfa_sqm", SC["d"]),
                           ("x", "flags", 1), ("s", "sun", SC["s"]),
-                          ("r", "realization", SC["r"]), ("p", "price_krw_sqm", SC["p"])]:
+                          ("r", "realization", SC["r"]), ("p", "price_krw_sqm", SC["p"]),
+                          ("ri", "rent_index", SC["ri"])]:
         exp = (j[sk].fillna(0) * scale).round(0).astype(float)
         bad = int((exp - j[tk].astype(float)).abs().gt(0.5).sum())
         check(f"{tk} ← {sk}", bad == 0, f"불일치 {bad:,}")
@@ -93,13 +94,14 @@ def main():
     price = j["p"].astype(float) / SC["p"]
     demo = j["d"].astype(float) / SC["d"]
     dist = j["t"].astype(float) / SC["t"]
+    ri = j["ri"].astype(float) / SC["ri"] if "ri" in j else 1.0   # 임대료 지역지수 (D-024)
     gfa = area * j["f"].astype(float) / 100 * rf
     rooms = np.floor(gfa * D["net_area_ratio"] / D["room_area_sqm"])
     cost = (price * area * D["land_price_multiplier"]
             + gfa * D["unit_construction_cost"] * (1 + D["soft_cost_ratio"])
             + demo * D["demolition_cost_per_sqm"])
     eq = cost - rooms * D["deposit_per_room"]
-    noi = (rooms * D["monthly_rent_per_room"] * 12
+    noi = (rooms * D["monthly_rent_per_room"] * ri * 12
            * (1 - D["vacancy_rate"]) * (1 - D["opex_ratio"]))
     s1 = np.where(eq > 0, noi / np.where(eq > 0, eq, 1), np.nan)
 

@@ -37,8 +37,8 @@ export const FLAG_REASONS = [
 export function prepare(scoring, scale) {
   const n = scoring.ids.length;
   const col = (k) => scoring.cols.indexOf(k);
-  const [ia, iff, ir, ip, id_, is, it, ix, itf] =
-    ["a", "f", "r", "p", "d", "s", "t", "x", "tf"].map(col);
+  const [ia, iff, ir, ip, id_, is, it, ix, itf, iri] =
+    ["a", "f", "r", "p", "d", "s", "t", "x", "tf", "ri"].map(col);
 
   const out = {
     n,
@@ -48,6 +48,7 @@ export function prepare(scoring, scale) {
     sgg: scoring.g,
     adj: scoring.adj || [],
     tf: new Float64Array(n),
+    ri: new Float64Array(n),
     area: new Float64Array(n),
     far: new Float64Array(n),
     rf: new Float64Array(n),
@@ -68,12 +69,13 @@ export function prepare(scoring, scale) {
     out.dist[i] = r[it] / scale.t;
     out.flags[i] = r[ix];
     out.tf[i] = itf >= 0 ? r[itf] / scale.tf : 1;
+    out.ri[i] = iri >= 0 ? r[iri] / scale.ri : 1;   // 임대료 지역지수 (D-024)
   }
   return out;
 }
 
 /** 필지 하나의 사업성. 상세 패널에서도 같은 함수를 쓴다. */
-export function financials(area, far, rf, price, demo, P) {
+export function financials(area, far, rf, price, demo, P, rentIndex = 1) {
   const gfa = (area * far) / 100 * rf;
   const rooms = Math.floor((gfa * P.net_area_ratio) / P.room_area_sqm);
   const land = price * area * P.land_price_multiplier;
@@ -82,14 +84,14 @@ export function financials(area, far, rf, price, demo, P) {
   const total = land + build + demoCost;
   const deposit = rooms * P.deposit_per_room;
   const equity = total - deposit;
-  const noi =
-    rooms * P.monthly_rent_per_room * 12 *
-    (1 - P.vacancy_rate) * (1 - P.opex_ratio);
+  // 임대료는 기준 자치구 값 × 지역지수 (D-024)
+  const rent = P.monthly_rent_per_room * rentIndex;
+  const noi = rooms * rent * 12 * (1 - P.vacancy_rate) * (1 - P.opex_ratio);
   const denom =
     P.denominator === "total_cost" ? total :
     P.denominator === "land_cost" ? land : equity;
   return {
-    gfa, rooms, land, build, demoCost, total, deposit, equity, noi,
+    gfa, rooms, land, build, demoCost, total, deposit, equity, noi, rent,
     s1: denom > 0 ? noi / denom : NaN,
   };
 }
@@ -137,10 +139,12 @@ export function computeRanking(D, P, opts = {}) {
   const excludeSubdivided = !!opts.excludeSubdivided;
   // 자치구 필터. 단일 임대료로 자치구를 비교하면 왜곡되므로 한 구씩 보게 한다.
   const onlySgg = opts.onlySgg ? Number(opts.onlySgg) : 0;
+  // 폴리곤 범위. Set<index> 로 미리 계산해 넘긴다 (기하 계산은 여기서 하지 않는다).
+  const inArea = opts.inArea || null;
 
   for (let i = 0; i < n; i++) {
     const f = financials(
-      D.area[i], D.far[i], D.rf[i], D.price[i], D.demo[i], P
+      D.area[i], D.far[i], D.rf[i], D.price[i], D.demo[i], P, D.ri[i]
     );
     s1[i] = f.s1;
     rooms[i] = f.rooms;
@@ -152,6 +156,7 @@ export function computeRanking(D, P, opts = {}) {
       Number.isFinite(f.s1);
     if (ok && excludeSubdivided && D.flags[i] & FLAG.SUBDIVIDED) ok = false;
     if (ok && onlySgg && D.sgg[i] !== onlySgg) ok = false;
+    if (ok && inArea && !inArea.has(i)) ok = false;
     isCand[i] = ok ? 1 : 0;
     if (ok) cand.push(i);
   }
@@ -282,19 +287,59 @@ export function assemble(items, hullPts, P, A) {
   const total = land + build + demoCost;
   const deposit = rooms * P.deposit_per_room;
   const equity = total - deposit;
-  const noi = rooms * P.monthly_rent_per_room * 12
+  const ri = items.reduce((s, x) => s + (x.ri ?? 1) * x.area, 0) / area;
+  const noi = rooms * P.monthly_rent_per_room * ri * 12
     * (1 - P.vacancy_rate) * (1 - P.opex_ratio);
   const denom =
     P.denominator === "total_cost" ? total :
     P.denominator === "land_cost" ? land : equity;
 
   return {
-    n: items.length, area, far, rf, shapeF, exact,
+    n: items.length, area, far, rf, shapeF, exact, ri,
     gfa, rooms, land, build, demoCost, total, deposit,
     s1: denom > 0 ? noi / denom : NaN,
     sun: items.reduce((s, x) => s + x.sun, 0) / items.length,
     dist: Math.min(...items.map((x) => x.dist)),
   };
+}
+
+/** 점이 폴리곤 안에 있는가 (ray casting). ring 은 [[x,y],…] */
+export function pointInRing(pt, ring) {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, yi] = ring[i], [xj, yj] = ring[j];
+    if ((yi > pt[1]) !== (yj > pt[1]) &&
+        pt[0] < ((xj - xi) * (pt[1] - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
+
+/** 두 선분이 교차하는가. 필지가 폴리곤 경계를 '지나가는' 경우를 잡는다. */
+function segIntersect(a, b, c, d) {
+  const o = (p, q, r) =>
+    Math.sign((q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0]));
+  const o1 = o(a, b, c), o2 = o(a, b, d), o3 = o(c, d, a), o4 = o(c, d, b);
+  return o1 !== o2 && o3 !== o4;
+}
+
+/**
+ * 필지 링이 폴리곤과 겹치는가 (교차 = intersects).
+ * "폴리곤 위를 지나가는 필지도 포함" 이라는 요구를 만족시키려면
+ * 포함(within)이 아니라 교차로 판정해야 한다.
+ *   1) 필지 꼭짓점 하나라도 폴리곤 안 → 포함
+ *   2) 폴리곤 꼭짓점 하나라도 필지 안 → 폴리곤이 필지 안에 쏙 들어간 경우
+ *   3) 변끼리 교차       → 경계를 가로지르는 경우
+ */
+export function ringIntersectsPolygon(ring, poly) {
+  for (const p of ring) if (pointInRing(p, poly)) return true;
+  for (const p of poly) if (pointInRing(p, ring)) return true;
+  for (let i = 0; i < ring.length; i++) {
+    const a = ring[i], b = ring[(i + 1) % ring.length];
+    for (let j = 0; j < poly.length; j++) {
+      if (segIntersect(a, b, poly[j], poly[(j + 1) % poly.length])) return true;
+    }
+  }
+  return false;
 }
 
 /** 선택 집합이 연접으로 하나로 이어지는가. 끊기면 몇 덩어리인지 돌려준다. */

@@ -60,10 +60,13 @@ def merged_metrics(rows, cfg):
     demo = float(rows["demo_gfa_sqm"].sum()) * P["demolition_cost_per_sqm"]
     total = land + build + demo
     eq = total - rooms * P["deposit_per_room"]
-    noi = (rooms * P["monthly_rent_per_room"] * 12
+    # 임대료 지역지수는 면적가중 평균 (D-024). 웹 assemble() 과 같은 식이어야 한다.
+    ri = (float((rows["rent_index"] * rows["area_sqm"]).sum()) / area
+          if "rent_index" in rows else 1.0)
+    noi = (rooms * P["monthly_rent_per_room"] * ri * 12
            * (1 - P["vacancy_rate"]) * (1 - P["opex_ratio"]))
     return {
-        "n": len(rows), "area": area, "far": far, "rf": rf,
+        "n": len(rows), "area": area, "far": far, "rf": rf, "ri": ri,
         "gfa": gfa, "rooms": int(rooms), "cost": total,
         "s1": noi / eq if eq > 0 else np.nan,
         "sun": float(rows["sun"].mean()),

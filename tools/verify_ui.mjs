@@ -74,7 +74,7 @@ const order = jsTop.filter((x, k) => x === pyTop[k]).length;
 ok("상위200 집합 일치", same === 200, `${same}/200`);
 ok("상위200 순서 일치", order === 200, `${order}/200`);
 ok("후보 수 일치", jsMetrics.n === 8112, `${jsMetrics.n}`);
-ok("중위 수익률 3.6%대", Math.abs(jsMetrics.medS1 - 0.0364) < 0.002,
+ok("중위 수익률 3.8%대", Math.abs(jsMetrics.medS1 - 0.0376) < 0.002,
   `${(jsMetrics.medS1 * 100).toFixed(2)}%`);
 writeFileSync("/tmp/js_top200.txt", jsTop.join("\n"));
 
@@ -101,7 +101,7 @@ const lowRent = await pg.evaluate(() => {
   const s = window.__state, r = s.result;
   return r.s1[r.order[0]];
 });
-ok("임대료 45만원 → 수익률 하락", lowRent < 0.045, `1위 ${(lowRent * 100).toFixed(2)}%`);
+ok("기준임대료 45만원 → 수익률 하락", lowRent < 0.05, `1위 ${(lowRent * 100).toFixed(2)}%`);
 await setRange("rent", 85);
 
 await setRange("tol1", 0);
@@ -164,6 +164,33 @@ const exPaint = await pg.evaluate(() =>
   JSON.stringify(window.__map.getPaintProperty("parcel-fill", "fill-opacity")));
 ok("제외 필지 표시 토글", exPaint.includes("0.42"));
 await pg.uncheck("#showEx");
+
+// ── 3a. 범위 폴리곤 ──────────────────────────────────────
+console.log("\n3a) 범위 폴리곤");
+await pg.evaluate(() => { window.__map.jumpTo({ center: [127.0552, 37.5470], zoom: 15.4 }); });
+await pg.waitForTimeout(7000);
+const beforeArea = await candNow();
+await pg.click("#drawBtn");
+for (const [x, y] of [[700, 400], [1100, 400], [1100, 700], [700, 700]]) {
+  await pg.mouse.click(x, y);
+  await pg.waitForTimeout(180);
+}
+await pg.mouse.dblclick(700, 700);
+await pg.waitForTimeout(2500);
+const drawState = await pg.evaluate(() => ({
+  verts: window.__state.draw.poly ? window.__state.draw.poly.length : 0,
+  inArea: window.__state.draw.inArea ? window.__state.draw.inArea.size : 0,
+  cand: window.__state.result.order.length,
+  allInside: window.__state.result.order.every((i) => window.__state.draw.inArea.has(i)),
+}));
+ok("폴리곤 꼭짓점 4개", drawState.verts === 4, `${drawState.verts}개 (더블클릭 중복 제거)`);
+ok("범위 내 필지 산출", drawState.inArea > 0, `${drawState.inArea}필지`);
+ok("후보가 범위로 축소", drawState.cand > 0 && drawState.cand < beforeArea,
+  `${beforeArea.toLocaleString()} → ${drawState.cand.toLocaleString()}`);
+ok("후보 전부 범위 안", drawState.allInside);
+await pg.click("#drawClear");
+await pg.waitForTimeout(600);
+ok("범위 해제", (await candNow()) === beforeArea, `${(await candNow()).toLocaleString()}`);
 
 // ── 3b. 합필 ─────────────────────────────────────────────
 console.log("\n3b) 합필");

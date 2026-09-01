@@ -40,9 +40,15 @@
         <select id="sggSel" aria-describedby="sggWarn">
           <option value="0">전체</option>
         </select>
+        <div style="display:flex;gap:6px;margin-top:7px">
+          <button class="btn" id="drawBtn" style="flex:1">범위 그리기</button>
+          <button class="btn" id="drawClear" style="flex:0 0 68px" disabled>지우기</button>
+        </div>
+        <div class="hint" id="drawHint">지도를 클릭해 꼭짓점을 찍고, 더블클릭 또는 Enter 로 닫습니다.
+          <b>폴리곤에 걸치는 필지도 포함</b>됩니다.</div>
         <div class="hint" id="sggWarn">
-          자치구를 섞어 보면 순위가 왜곡됩니다. 임대료를 한 값으로 가정하는데
-          공시지가는 구마다 다르기 때문입니다. 한 구씩 보고 임대료를 맞추세요.
+          임대료에 <b>법정동별 실거래 지수</b>가 적용됩니다. 자치구를 섞어 봐도
+          단가 가정 때문에 왜곡되지는 않습니다.
         </div>
       </div>
     </div>
@@ -63,10 +69,10 @@
     <div class="grp">
       <h3>사업성 가정</h3>
       <div class="ctl">
-        <label for="rent">실당 월임대료 <span class="v"><span id="rentv">85</span>만원</span></label>
+        <label for="rent">기준 월임대료 <span class="v"><span id="rentv">85</span>만원</span></label>
         <input type="range" id="rent" min="40" max="180" step="1" value="85">
-        <div class="hint">코리빙 실거래: 맹그로브 신설 79.8만(~15㎡) · 신촌 98~120만(14~15㎡)
-          · 에피소드 신당 145만(22.1㎡)</div>
+        <div class="hint"><b>성북구 기준값</b>입니다. 필지마다 법정동 실거래 지수가 곱해집니다
+          (0.60~1.70). 코리빙 실거래: 맹그로브 신설 79.8만(~15㎡) · 에피소드 신당 145만(22.1㎡)</div>
       </div>
       <div class="ctl">
         <label for="deposit">실당 보증금 <span class="v"><span id="depositv">500</span>만원</span></label>

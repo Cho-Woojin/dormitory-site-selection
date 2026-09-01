@@ -137,6 +137,11 @@ body.has-detail #params { max-height: calc(100vh - var(--header-h) - 46vh - 36px
           max-height: calc(100vh - var(--header-h) - 46px); }
 #detail { bottom: 12px; left: 12px; width: 302px; max-height: 46vh; }
 #detail[hidden] { display: none; }
+#drawBtn[aria-pressed="true"] {
+  background: var(--accent); color: var(--accent-ink); border-color: var(--accent);
+}
+.drawing #map { cursor: crosshair; }
+
 #asm {
   top: calc(var(--header-h) + 12px); right: 334px; width: 320px;
   max-height: calc(100vh - var(--header-h) - 46px);
@@ -343,7 +348,12 @@ select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
   #list { top: auto; bottom: 26px; max-height: 34vh; }
   #list[data-collapsed="true"] .body { display: none; }
   #detail { bottom: 8px; max-height: 56vh; z-index: 25; }
-  #asm { top: auto; bottom: 26px; left: 8px; right: 8px; width: auto; max-height: 52vh; z-index: 26; }
+  #drawBtn[aria-pressed="true"] {
+  background: var(--accent); color: var(--accent-ink); border-color: var(--accent);
+}
+.drawing #map { cursor: crosshair; }
+
+#asm { top: auto; bottom: 26px; left: 8px; right: 8px; width: auto; max-height: 52vh; z-index: 26; }
   body.has-detail #params { max-height: none; }
   body.has-detail #params .body { display: none; }
   #legend {

@@ -209,3 +209,40 @@ def load_buildings(cfg, verbose=True):
     if verbose:
         print(f"  → 사용 건물 {len(b):,}동 (캐시 저장)")
     return b
+
+
+def rent_index(g, cfg, verbose=True):
+    """필지별 임대료 지역지수. 법정동 우선, 표본이 얇으면 자치구로 폴백 (D-024).
+
+    PNU 앞 10자리 = 법정동코드 = API 의 CGG_CD + STDG_CD 다.
+    """
+    import json
+
+    import numpy as np
+    import pandas as pd
+
+    if not cfg["profitability"].get("use_rent_index", False):
+        if verbose:
+            print("  지역지수 미사용 (use_rent_index: false) — 전 필지 동일 단가")
+        return pd.Series(1.0, index=g.index), {}
+
+    path = INTERIM / "rent_market.json"
+    if not path.exists():
+        raise SystemExit("rent_market.json 이 없습니다. scripts/09_rent_market.py 를 먼저 실행하세요")
+    rm = json.loads(path.read_text(encoding="utf-8"))
+
+    dong = {k.replace("|", ""): v["index"] for k, v in rm["by_dong"].items()}
+    sgg = {k: v["index"] for k, v in rm["by_sgg"].items()}
+    bjd = g["pnu"].str[:10]
+    idx = bjd.map(dong)
+    src = pd.Series("법정동", index=g.index)
+    fallback = idx.isna()
+    idx = idx.fillna(g["sgg_cd"].map(sgg))
+    src[fallback] = "자치구"
+    idx = idx.fillna(1.0)
+    src[idx.isna()] = "기본"
+    if verbose:
+        print(f"  지역지수: 법정동 {int((src == '법정동').sum()):,} / "
+              f"자치구 폴백 {int((src == '자치구').sum()):,}"
+              f"   범위 {idx.min():.3f}~{idx.max():.3f} (중위 {idx.median():.3f})")
+    return idx, rm

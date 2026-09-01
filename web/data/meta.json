@@ -81,7 +81,8 @@
     "d": 100,
     "s": 100000,
     "t": 100,
-    "tf": 1000
+    "tf": 1000,
+    "ri": 10000
   },
   "flag_bits": {
     "F_JIMOK": 1,
@@ -94,6 +95,11 @@
     "W_ZONE2": 512,
     "W_SUBDIVIDED": 1024,
     "W_INDUSTRIAL": 2048
+  },
+  "rent_index": {
+    "enabled": true,
+    "base_district": "11290",
+    "note": "필지별 임대료 = monthly_rent_per_room × ri"
   },
   "assembly": {
     "district_plan_threshold_sqm": 3000,

@@ -68,6 +68,8 @@ def export_parcels(cfg):
             "s": (g["sun"] * 100000).round(0).astype("int32"),     # 일조 ×100000
             # S₃ raw (등급 임계값은 웹 파라미터)
             "t": (g["stn_dist_m"] * 100).round(0).astype("int64"),  # 최근접역 거리 ×100
+            # 임대료 지역지수 (D-024). 필지별 임대료 = 기준값 × ri
+            "ri": (g["rent_index"] * 10000).round(0).astype("int32"),
             # 하드필터·경고 비트마스크
             "x": g["flags"].astype("int32"),
             "geometry": g.geometry,
@@ -121,6 +123,7 @@ def export_scoring_table(cfg):
         (g["stn_dist_m"] * 100).round(0).astype("int64"),
         g["flags"].astype("int64"),
         (tf * 1000).round(0).astype("int64"),
+        (g["rent_index"] * 10000).round(0).astype("int64"),
     ]).tolist()
 
     # 필지명·용도지역도 함께 싣는다. 타일에서 긁어오면 화면 밖 필지의 이름을
@@ -139,7 +142,7 @@ def export_scoring_table(cfg):
     print(f"  연접 쌍 {npairs:,}")
 
     payload = {
-        "cols": ["a", "f", "r", "p", "d", "s", "t", "x", "tf"],
+        "cols": ["a", "f", "r", "p", "d", "s", "t", "x", "tf", "ri"],
         "ids": g["pnu"].tolist(),
         "nm": (g["addr"].str.replace("서울특별시 ", "", regex=False)
                + " " + g["jibun"]).tolist(),
@@ -236,12 +239,17 @@ def export_aux(cfg):
             "tol_profitability_pct": R["tol_profitability_pct"],
             "tol_solar_pct": R["tol_solar_pct"],
         },
-        "scale": {"a": 100, "r": 100000, "p": 1, "d": 100, "s": 100000, "t": 100, "tf": 1000},
+        "scale": {"a": 100, "r": 100000, "p": 1, "d": 100, "s": 100000, "t": 100, "tf": 1000, "ri": 10000},
         "flag_bits": {
             "F_JIMOK": 1, "F_ZONE": 2, "F_LANDUSE": 4, "F_ROAD": 8,
             "F_ROOMS": 16, "F_PRICE": 32,
             "W_ROAD_UNKNOWN": 256, "W_ZONE2": 512, "W_SUBDIVIDED": 1024,
             "W_INDUSTRIAL": 2048,
+        },
+        "rent_index": {
+            "enabled": bool(cfg["profitability"].get("use_rent_index", False)),
+            "base_district": cfg["region"]["districts"][0]["code"],
+            "note": "필지별 임대료 = monthly_rent_per_room × ri",
         },
         "assembly": {
             "district_plan_threshold_sqm": 3000,

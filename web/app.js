@@ -2,7 +2,7 @@
 
 import {
   prepare, computeRanking, financials, exclusionReasons,
-  assemble, connectivity, FLAG, GRADE_LABELS,
+  assemble, connectivity, ringIntersectsPolygon, FLAG, GRADE_LABELS,
 } from "./score.js";
 
 /* MapLibre 는 `zoom` 을 최상위 interpolate/step 에서만 허용한다.
@@ -40,6 +40,7 @@ const state = {
   meta: null, D: null, idx: null, result: null,
   selected: null, map: null, painted: new Set(), zoneNames: null,
   asm: [], geomCache: new Map(),
+  draw: { on: false, pts: [], poly: null, inArea: null },
 };
 
 /* ── 파라미터 읽기 ─────────────────────────────────────── */
@@ -98,6 +99,7 @@ function recompute() {
   const res = computeRanking(state.D, P, {
     excludeSubdivided: $("exSub").checked,
     onlySgg: $("sggSel").value,
+    inArea: state.draw.inArea,
   });
   state.result = res;
   state.P = P;
@@ -178,7 +180,7 @@ function renderDetail(id) {
     return;
   }
   const D = state.D, res = state.result;
-  const f = financials(D.area[i], D.far[i], D.rf[i], D.price[i], D.demo[i], P);
+  const f = financials(D.area[i], D.far[i], D.rf[i], D.price[i], D.demo[i], P, D.ri[i]);
   const rank = res.rankOf[i];
   const zone = state.zoneOf(id);
 
@@ -215,6 +217,8 @@ function renderDetail(id) {
       <dt>추정 실 수</dt><dd>${f.rooms.toLocaleString()}실</dd>
     </dl></div>
     <div class="sect"><dl class="kv">
+      <dt>적용 임대료</dt><dd>${Math.round(f.rent / 1e4).toLocaleString()}만원/월
+        <span style="color:var(--ink-3)">(지수 ${D.ri[i].toFixed(2)})</span></dd>
       <dt>공시지가</dt><dd>${won(D.price[i])}원/㎡</dd>
       <dt>토지비</dt><dd>${won(f.land)}원</dd>
       <dt>공사비</dt><dd>${won(f.build)}원</dd>
@@ -314,7 +318,7 @@ function renderAsm() {
   const D = state.D;
   const items = state.asm.map((i) => ({
     area: D.area[i], far: D.far[i], tf: D.tf[i], rf: D.rf[i],
-    price: D.price[i], demo: D.demo[i], sun: D.sun[i], dist: D.dist[i],
+    price: D.price[i], demo: D.demo[i], sun: D.sun[i], dist: D.dist[i], ri: D.ri[i],
     flags: D.flags[i], zone: state.zoneOf(D.ids[i]),
   }));
 
@@ -373,6 +377,8 @@ function renderAsm() {
         <dt>필지 수</dt><dd>${m.n}필지 (단독 후보 ${soloCand})</dd>
         <dt>합산 면적</dt><dd>${Math.round(m.area).toLocaleString()}㎡</dd>
         <dt>적용용적률</dt><dd>${m.far.toFixed(0)}%</dd>
+        <dt>적용 임대료</dt><dd>${Math.round(P.monthly_rent_per_room * m.ri / 1e4)}만원/월
+          <span style="color:var(--ink-3)">(지수 ${m.ri.toFixed(2)})</span></dd>
         <dt>실현계수</dt><dd>${m.rf.toFixed(2)}${m.exact ? "" : " (근사)"}</dd>
         <dt>가용연면적</dt><dd>${Math.round(m.gfa).toLocaleString()}㎡</dd>
         <dt>총사업비</dt><dd><b>${won(m.total)}원</b></dd>
@@ -387,6 +393,124 @@ function renderAsm() {
 
   el.querySelectorAll("[data-rm]").forEach((b) =>
     b.addEventListener("click", () => asmToggle(b.dataset.rm)));
+}
+
+/* ── 범위 그리기 ─────────────────────────────────────────
+ * 카카오맵·네이버맵의 반경/면적 그리기와 같은 조작감:
+ * 클릭으로 꼭짓점을 찍고 더블클릭(또는 Enter)으로 닫는다.
+ * 판정은 **교차**다. 폴리곤 경계에 걸치는 필지도 범위에 포함한다.
+ * ───────────────────────────────────────────────────── */
+
+function drawRender() {
+  const d = state.draw;
+  const pts = d.pts;
+  const line = pts.length >= 2
+    ? [{ type: "Feature", geometry: { type: "LineString", coordinates: d.on ? pts : [...pts, pts[0]] } }]
+    : [];
+  const fill = d.poly
+    ? [{ type: "Feature", geometry: { type: "Polygon", coordinates: [[...d.poly, d.poly[0]]] } }]
+    : [];
+  const dots = pts.map((p) => ({ type: "Feature", geometry: { type: "Point", coordinates: p } }));
+  state.map.getSource("draw-line").setData({ type: "FeatureCollection", features: line });
+  state.map.getSource("draw-fill").setData({ type: "FeatureCollection", features: fill });
+  state.map.getSource("draw-pt").setData({ type: "FeatureCollection", features: dots });
+}
+
+/** 폴리곤에 걸치는 필지 인덱스 집합. 필지 링은 타일에서 가져온다. */
+function computeInArea(poly) {
+  const set = new Set();
+  const bb = poly.reduce((b, p) => [
+    Math.min(b[0], p[0]), Math.min(b[1], p[1]),
+    Math.max(b[2], p[0]), Math.max(b[3], p[1]),
+  ], [Infinity, Infinity, -Infinity, -Infinity]);
+
+  const feats = state.map.querySourceFeatures("parcels", { sourceLayer: "parcels" });
+  let seen = 0;
+  for (const f of feats) {
+    const id = f.properties?.id;
+    if (!id) continue;
+    const i = state.idx.get(id);
+    if (i === undefined || set.has(i)) continue;
+    const rings = [];
+    const walk = (c) => {
+      if (typeof c[0][0] === "number") rings.push(c);
+      else c.forEach(walk);
+    };
+    walk(f.geometry.coordinates);
+    for (const r of rings) {
+      // 바운딩박스로 먼저 거른다
+      let ok = false;
+      for (const p of r) {
+        if (p[0] >= bb[0] && p[0] <= bb[2] && p[1] >= bb[1] && p[1] <= bb[3]) { ok = true; break; }
+      }
+      if (!ok && !poly.some((p) => {
+        const xs = r.map((q) => q[0]), ys = r.map((q) => q[1]);
+        return p[0] >= Math.min(...xs) && p[0] <= Math.max(...xs)
+            && p[1] >= Math.min(...ys) && p[1] <= Math.max(...ys);
+      })) continue;
+      if (ringIntersectsPolygon(r, poly)) { set.add(i); break; }
+    }
+    seen++;
+  }
+  return { set, seen };
+}
+
+/** 더블클릭은 click 두 번을 먼저 발생시킨다. 같은 자리에 겹친 꼭짓점을 걷어낸다. */
+function dedupeTail(pts, tol = 2e-5) {
+  const out = pts.slice();
+  while (out.length >= 2) {
+    const a = out[out.length - 1], b = out[out.length - 2];
+    if (Math.abs(a[0] - b[0]) < tol && Math.abs(a[1] - b[1]) < tol) out.pop();
+    else break;
+  }
+  return out;
+}
+
+function drawFinish() {
+  const d = state.draw;
+  d.pts = dedupeTail(d.pts);
+  if (d.pts.length < 3) { drawCancel(); return; }
+  d.poly = d.pts.slice();
+  d.on = false;
+  document.body.classList.remove("drawing");
+  $("drawBtn").setAttribute("aria-pressed", "false");
+  $("drawBtn").textContent = "범위 다시 그리기";
+  $("drawClear").disabled = false;
+
+  const { set, seen } = computeInArea(d.poly);
+  d.inArea = set;
+  $("drawHint").innerHTML = set.size
+    ? `범위 안 필지 <b>${set.size.toLocaleString()}</b>개 (화면에 로드된 ${seen.toLocaleString()}개 중).
+       <b>경계에 걸치는 필지도 포함</b>됩니다. 줌아웃 상태면 일부 타일이 안 읽혀 누락될 수 있으니
+       범위가 다 보이는 축척에서 그리세요.`
+    : `범위 안에 필지가 없습니다. 축척을 키우고 다시 그려 보세요.`;
+  drawRender();
+  recompute();
+}
+
+function drawCancel() {
+  const d = state.draw;
+  d.on = false; d.pts = []; d.poly = null; d.inArea = null;
+  document.body.classList.remove("drawing");
+  $("drawBtn").setAttribute("aria-pressed", "false");
+  $("drawBtn").textContent = "범위 그리기";
+  $("drawClear").disabled = true;
+  $("drawHint").innerHTML =
+    "지도를 클릭해 꼭짓점을 찍고, 더블클릭 또는 Enter 로 닫습니다. <b>폴리곤에 걸치는 필지도 포함</b>됩니다.";
+  drawRender();
+  recompute();
+}
+
+function drawStart() {
+  const d = state.draw;
+  d.on = true; d.pts = []; d.poly = null; d.inArea = null;
+  document.body.classList.add("drawing");
+  $("drawBtn").setAttribute("aria-pressed", "true");
+  $("drawBtn").textContent = "그리는 중 (Esc 취소)";
+  $("drawClear").disabled = false;
+  $("drawHint").innerHTML = "꼭짓점을 클릭하세요. <b>더블클릭 또는 Enter</b> 로 닫습니다.";
+  drawRender();
+  recompute();
 }
 
 /* ── 부트 ──────────────────────────────────────────────── */
@@ -539,6 +663,25 @@ async function boot() {
     id: "bnd-line", type: "line", source: "bnd",
     paint: { "line-color": "#52514e", "line-width": 1.6, "line-dasharray": [3, 2] },
   });
+  for (const id of ["draw-fill", "draw-line", "draw-pt"]) {
+    map.addSource(id, { type: "geojson", data: { type: "FeatureCollection", features: [] } });
+  }
+  map.addLayer({
+    id: "draw-fill", type: "fill", source: "draw-fill",
+    paint: { "fill-color": "#eb6834", "fill-opacity": 0.10 },
+  });
+  map.addLayer({
+    id: "draw-line", type: "line", source: "draw-line",
+    paint: { "line-color": "#eb6834", "line-width": 2, "line-dasharray": [2, 1.5] },
+  });
+  map.addLayer({
+    id: "draw-pt", type: "circle", source: "draw-pt",
+    paint: {
+      "circle-radius": 4.5, "circle-color": "#ffffff",
+      "circle-stroke-color": "#eb6834", "circle-stroke-width": 2,
+    },
+  });
+
   map.addSource("stn", { type: "geojson", data: stn });
   map.addLayer({
     id: "stn-dot", type: "circle", source: "stn", minzoom: 12,
@@ -582,6 +725,14 @@ async function boot() {
 
   // 상호작용
   let hovered = "";
+  map.on("dblclick", (e) => {
+    if (!state.draw.on) return;
+    e.preventDefault();
+    drawFinish();
+  });
+  map.doubleClickZoom.disable();
+  map.on("load", () => map.doubleClickZoom.enable());
+
   map.on("mousemove", "parcel-fill", (e) => {
     const id = e.features[0]?.properties?.id;
     if (id && id !== hovered) {
@@ -596,6 +747,13 @@ async function boot() {
     map.getCanvas().style.cursor = "";
   });
   map.on("click", (e) => {
+    if (state.draw.on) {
+      // 즉시 찍는다 (반응이 바로 보여야 한다). 더블클릭이 만드는 중복 꼭짓점은
+      // 닫을 때 걸러낸다 (dedupeTail).
+      state.draw.pts.push([e.lngLat.lng, e.lngLat.lat]);
+      drawRender();
+      return;
+    }
     const fs = map.queryRenderedFeatures(e.point, { layers: ["parcel-fill"] });
     if (!fs.length) return;
     const p = fs[0].properties;
@@ -655,7 +813,8 @@ function wireUI() {
     $("exSub").checked = false;
     $("sggSel").value = "0";
     syncLabels();
-    recompute();
+    if (state.draw.poly || state.draw.on) drawCancel();
+    else recompute();
   });
 
   const aboutOpen = (v) => {
@@ -664,6 +823,12 @@ function wireUI() {
   };
   $("aboutBtn").addEventListener("click", () => aboutOpen($("about").hidden));
   $("aboutClose").addEventListener("click", () => aboutOpen(false));
+
+  $("drawBtn").addEventListener("click", () => {
+    if (state.draw.on) drawFinish();
+    else drawStart();
+  });
+  $("drawClear").addEventListener("click", drawCancel);
 
   $("asmMode").addEventListener("change", (e) => {
     if (!e.target.checked) {
@@ -736,7 +901,9 @@ function wireUI() {
   });
 
   addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && state.draw.on) { drawFinish(); return; }
     if (e.key !== "Escape") return;
+    if (state.draw.on) { drawCancel(); return; }
     if (!$("about").hidden) { $("aboutClose").click(); return; }
     if ($("asmMode").checked && state.asm.length) { $("asmClear").click(); return; }
     if (!$("detail").hidden) $("detailClose").click();
