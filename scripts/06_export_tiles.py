@@ -36,17 +36,21 @@ def export_parcels(cfg):
     """T-401 — raw 지표만 담은 GeoJSON."""
     g = gpd.read_file(INTERIM / "parcels_ranked.gpkg", layer="parcels")
     print(f"  입력 {len(g):,} 필지")
+    PARCEL_COUNT["total"] = len(g)
+    PARCEL_COUNT["by_sgg"] = {str(k): int(v) for k, v in
+                              g["sgg_cd"].value_counts().sort_index().items()}
 
     out = gpd.GeoDataFrame(
         {
             # 식별·표시
-            # PNU 19자리 = 시군구5 + 법정동5 + 특수지1 + 본번4 + 부번4.
-            # 성북구 단일 분석이라 시군구 5자리는 상수 → 제거. `"11290" + id` 로 복원된다.
-            # 주의: 뒤 8자리(본번+부번)만 쓰면 법정동이 다른 필지끼리 충돌한다 (실측 15,322건).
-            "id": g["pnu"].str[5:],
-            "nm": (g["addr"].str.replace("서울특별시 성북구 ", "", regex=False)
+            # PNU 19자리 전체를 id 로 쓴다.
+            # 시군구를 떼면 자치구 간에 충돌한다 — 법정동 일련번호가 구마다 반복되기
+            # 때문이다 (성북+성동 실측 892건 충돌). 5자리 아끼려다 필지가 뒤섞인다.
+            "id": g["pnu"],
+            "nm": (g["addr"].str.replace("서울특별시 ", "", regex=False)
                    + " " + g["jibun"]),
             "z": g["zone1"].map(ZONE_CODES).fillna(0).astype("int16"),
+            "g": g["sgg_cd"].astype("int32"),          # 자치구 코드
             # S₁ 재계산에 필요한 raw 값
             #
             # ⚠️ 정밀도 주의: 실 수는 floor(), 역세권은 등급 경계로 끊기므로
@@ -115,10 +119,11 @@ def export_scoring_table(cfg):
     # 못 찾아 리스트에 PNU 가 그대로 노출된다(실제로 발생한 버그).
     payload = {
         "cols": ["a", "f", "r", "p", "d", "s", "t", "x"],
-        "ids": g["pnu"].str[5:].tolist(),
-        "nm": (g["addr"].str.replace("서울특별시 성북구 ", "", regex=False)
+        "ids": g["pnu"].tolist(),
+        "nm": (g["addr"].str.replace("서울특별시 ", "", regex=False)
                + " " + g["jibun"]).tolist(),
         "z": g["zone1"].map(ZONE_CODES).fillna(0).astype(int).tolist(),
+        "g": g["sgg_cd"].astype(int).tolist(),
         "rows": rows,
     }
     path = WEB_DATA / "scoring.json"
@@ -157,6 +162,9 @@ def build_tiles(cfg, geojson):
     return out
 
 
+PARCEL_COUNT = {"total": 0, "by_sgg": {}}
+
+
 def export_aux(cfg):
     """T-403 — 역·구경계. 소형이라 타일 불필요."""
     crs = cfg["region"]["output_crs"]
@@ -170,7 +178,8 @@ def export_aux(cfg):
     sgg = gpd.read_file(
         RAW / "external" / "seoul_admin_boundaries" / "seoul_sgg.geojson"
     )
-    gu = sgg[sgg["sgg_cd"].astype(str) == cfg["region"]["sgg_code"]].to_crs(crs)
+    codes = [d["code"] for d in cfg["region"]["districts"]]
+    gu = sgg[sgg["sgg_cd"].astype(str).isin(codes)].to_crs(crs)
     gu[["sgg_nm", "geometry"]].to_file(WEB_DATA / "boundary.geojson", driver="GeoJSON")
     print(f"  boundary.geojson  {(WEB_DATA / 'boundary.geojson').stat().st_size / 1e3:.0f}KB")
 
@@ -179,7 +188,10 @@ def export_aux(cfg):
                      cfg["transit"], cfg["ranking"])
     meta = {
         "region": cfg["region"]["name"],
-        "parcel_count": 52970,
+        "districts": [{"code": d["code"], "name": d["name"]}
+                      for d in cfg["region"]["districts"]],
+        "parcel_count": PARCEL_COUNT["total"],
+        "parcel_count_by_district": PARCEL_COUNT["by_sgg"],
         "zone_codes": {str(v): k for k, v in ZONE_CODES.items()},
         "zone_far": {str(ZONE_CODES[k]): (v["far_residential"] or
                                           (v["far_relaxed"] or v["far"]))
@@ -205,6 +217,7 @@ def export_aux(cfg):
             "F_JIMOK": 1, "F_ZONE": 2, "F_LANDUSE": 4, "F_ROAD": 8,
             "F_ROOMS": 16, "F_PRICE": 32,
             "W_ROAD_UNKNOWN": 256, "W_ZONE2": 512, "W_SUBDIVIDED": 1024,
+            "W_INDUSTRIAL": 2048,
         },
         "data_vintage": {
             "필지·공시지가": "2026-05-13 (AL_D194) / 공시일자 2026-04-30",

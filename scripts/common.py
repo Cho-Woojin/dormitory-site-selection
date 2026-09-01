@@ -10,8 +10,13 @@ ROOT = Path(__file__).resolve().parent.parent
 RAW = ROOT / "data" / "raw"
 INTERIM = ROOT / "data" / "interim"
 
-PARCELS_SHP = RAW / "land_characteristics" / "11290" / "AL_D194_11290_20260520.shp"
+LAND_DIR = RAW / "land_characteristics"
 BUILDINGS_SHP = RAW / "GIS건물통합정보_서울" / "AL_D010_11_20260809.shp"
+
+
+def parcel_shp(d):
+    """자치구 하나의 토지특성정보 SHP 경로."""
+    return LAND_DIR / d["code"] / f'{d["shp"]}.shp'
 LANDPRICE_ZIP = RAW / "officially_assessed_price" / "AL_D151_11_20260526 (3).zip"
 
 # 두 SHP 모두 CP949. AL_D194는 .cpg가 UTF-8로 잘못 표기돼 있고,
@@ -56,6 +61,7 @@ F_PRICE = 1 << 5    # 공시지가 결측/0 — 사업성 계산 불가
 W_ROAD_UNKNOWN = 1 << 8  # 경고: 도로측면 '지정되지않음' (제외는 안 함, Q-07)
 W_ZONE2 = 1 << 9         # 경고: 용도지역 2개에 걸침 (zone1을 채택)
 W_SUBDIVIDED = 1 << 10   # 경고: 구분소유 추정 (다세대) — 전 세대 동의 필요 (D-014)
+W_INDUSTRIAL = 1 << 11   # 경고: 준공업·공업지역 — 산업기능 보호 규제 확인 필요 (D-018)
 
 FILTER_LABELS = [
     (F_JIMOK, "F6 지목≠대"),
@@ -65,6 +71,27 @@ FILTER_LABELS = [
     (F_PRICE, "   공시지가 결측"),
     (F_ROOMS, "F5 20실 미만"),
 ]
+
+
+def region_mask(gdf, cfg, buffer_m=0):
+    """대상 자치구(+버퍼) 안에 드는 행만 True. 경계는 SGIS 를 쓴다."""
+    import geopandas as gpd
+
+    codes = [d["code"] for d in cfg["region"]["districts"]]
+    sgg = gpd.read_file(
+        RAW / "external" / "seoul_admin_boundaries" / "seoul_sgg.geojson"
+    ).to_crs(gdf.crs)
+    poly = sgg[sgg["sgg_cd"].astype(str).isin(codes)].geometry.union_all()
+    if buffer_m:
+        poly = poly.buffer(buffer_m)
+    return gdf.geometry.representative_point().within(poly)
+
+
+def district_name(cfg, code):
+    for d in cfg["region"]["districts"]:
+        if d["code"] == code:
+            return d["name"]
+    return code
 
 
 def load_config():
@@ -101,16 +128,27 @@ def load_buildings(cfg, verbose=True):
     import pandas as pd
 
     cache = INTERIM / "buildings.gpkg"
+    codes = [d["code"] for d in cfg["region"]["districts"]]
     if cache.exists():
         b = gpd.read_file(cache, layer="buildings")
-        if verbose:
-            print(f"  건물 캐시 사용: {len(b):,}동")
-        return b
+        cached = set(b["sgg_cd"].astype(str).unique())
+        # 캐시가 설정과 어긋나면 조용히 쓰면 안 된다.
+        # (자치구를 추가했는데 옛 캐시를 쓰면 철거비·일조가 통째로 누락된다)
+        if not set(codes).issubset(cached):
+            if verbose:
+                print(f"  건물 캐시가 설정과 불일치 (캐시 {sorted(cached)} / "
+                      f"설정 {sorted(codes)}) → 재생성")
+            cache.unlink()
+        else:
+            if verbose:
+                print(f"  건물 캐시 사용: {len(b):,}동  {sorted(cached)}")
+            return b
 
     S = cfg["solar"]
-    b = gpd.read_file(
-        BUILDINGS_SHP, encoding=ENCODING, where=f"A23 = '{cfg['region']['sgg_code']}'"
-    )
+    # 대상 자치구 + 인접 자치구까지 읽는다. 경계에 붙은 필지는 옆 구 건물이
+    # 그림자를 만들기 때문이다. 읽은 뒤 경계 버퍼로 잘라낸다.
+    codes = [d["code"] for d in cfg["region"]["districts"]]
+    b = gpd.read_file(BUILDINGS_SHP, encoding=ENCODING)
     b = b[list(BUILDING_COLS) + ["geometry"]].rename(columns=BUILDING_COLS)
     for c in ["height_m", "floors_up"]:
         b[c] = pd.to_numeric(b[c], errors="coerce")
@@ -158,6 +196,14 @@ def load_buildings(cfg, verbose=True):
     b = b[b["height_m"].notna()].copy()
     # 철거 연면적 추정용 — 바닥면적 × 추정 층수
     b["est_gfa"] = b["footprint_sqm"] * np.maximum(b["height_m"] / fh, 1).round()
+
+    # 대상 구 + 버퍼로 잘라낸다 (서울 전체를 들고 있을 이유가 없다)
+    keep = region_mask(b, cfg, cfg["region"]["building_buffer_m"])
+    if verbose:
+        inn = b["sgg_cd"].isin(codes).sum()
+        print(f"  대상 구 {inn:,}동 + 버퍼 {cfg['region']['building_buffer_m']}m "
+              f"{int(keep.sum()) - inn:,}동")
+    b = b[keep].copy()
     INTERIM.mkdir(parents=True, exist_ok=True)
     b.to_file(cache, driver="GPKG", layer="buildings")
     if verbose:

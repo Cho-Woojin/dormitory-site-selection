@@ -12,7 +12,7 @@ import pandas as pd
 
 from common import (
     F_JIMOK, F_LANDUSE, F_PRICE, F_ROAD, F_ROOMS, F_ZONE,
-    FILTER_LABELS, INTERIM, W_ROAD_UNKNOWN, W_SUBDIVIDED, W_ZONE2,
+    FILTER_LABELS, INTERIM, W_INDUSTRIAL, W_ROAD_UNKNOWN, W_SUBDIVIDED, W_ZONE2,
     load_buildings, load_config,
 )
 
@@ -81,6 +81,7 @@ def main():
     flags |= np.where(g["road_side"].eq("지정되지않음"), W_ROAD_UNKNOWN, 0)
     flags |= np.where(g["straddles_zone"], W_ZONE2, 0)
     flags |= np.where(g["landuse"].isin(F["flag_subdivided_landuse"]), W_SUBDIVIDED, 0)
+    flags |= np.where(g["zone1"].isin(F["flag_industrial_zone"]), W_INDUSTRIAL, 0)
     g["flags"] = flags
 
     excl = F_JIMOK | F_ZONE | F_LANDUSE | F_ROAD | F_PRICE | F_ROOMS
@@ -110,6 +111,14 @@ def main():
     sub = (g["flags"] & W_SUBDIVIDED).astype(bool)
     print(f"    경고: 구분소유 추정(다세대) {int(sub.sum()):,}"
           f" (후보 중 {int((sub & g['is_candidate']).sum()):,}) — 웹 토글 대상")
+    ind = (g["flags"] & W_INDUSTRIAL).astype(bool)
+    print(f"    경고: 준공업·공업지역 {int(ind.sum()):,}"
+          f" (후보 중 {int((ind & g['is_candidate']).sum()):,}) — 산업보호 규제 확인 필요")
+
+    print("\n  자치구별 후보")
+    for nm, sub_g in g.groupby("sgg_nm"):
+        n = int(sub_g["is_candidate"].sum())
+        print(f"    {nm:<6} {n:>6,} / {len(sub_g):>6,}  ({n / len(sub_g):>5.1%})")
 
     # ── T-302 S₁ 사업성 ─────────────────────────────────────────────────
     print("\n" + "═" * 62)
@@ -153,9 +162,17 @@ def main():
     print(f"\n  후보 면적   중위 {c['area_sqm'].median():,.0f}㎡")
     print(f"  후보 실 수  중위 {c['rooms'].median():,.0f}실   (최대 {c['rooms'].max():,.0f})")
     print(f"  후보 공시지가 중위 {c['price_krw_sqm'].median():,.0f} 원/㎡")
+    print("\n  자치구별 수익률 중위")
+    for nm, sub_c in c.groupby("sgg_nm"):
+        print(f"    {nm:<6} {len(sub_c):>6,}필지  {sub_c['s1_net_equity'].median():>6.2%}"
+              f"  공시지가 중위 {sub_c['price_krw_sqm'].median():>10,.0f}원/㎡")
+
     print("\n  후보 용도지역 분포:")
-    for z, n in c["zone1"].value_counts().items():
-        print(f"    {z:<14} {n:>5,}")
+    ct = pd.crosstab(c["zone1"], c["sgg_nm"])
+    ct["계"] = ct.sum(axis=1)
+    for z, row in ct.sort_values("계", ascending=False).iterrows():
+        cells = "  ".join(f"{k} {row[k]:>5,}" for k in ct.columns[:-1])
+        print(f"    {z:<14} {cells}   계 {row['계']:>5,}")
 
     # 상식 점검 — 이상하면 넘어가지 말고 멈춘다 (CLAUDE.md)
     med = c["s1_net_equity"].median()

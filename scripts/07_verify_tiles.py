@@ -61,7 +61,7 @@ def main():
     D, FB, SC = meta["defaults"], meta["flag_bits"], meta["scale"]
 
     src = gpd.read_file(INTERIM / "parcels_ranked.gpkg", layer="parcels")
-    src["id"] = src["pnu"].str[5:]
+    src["id"] = src["pnu"]          # 타일 id 는 PNU 전체 (자치구 간 충돌 방지)
     src = src.set_index("id")
 
     print("═" * 62)
@@ -72,6 +72,11 @@ def main():
     check("최대줌 필지 수", len(t) == len(src), f"{len(t):,}/{len(src):,}")
 
     j = t.join(src, how="inner", rsuffix="_py")
+    # 빈 조인은 모든 "불일치 0" 검사를 공허하게 통과시킨다. 먼저 조인부터 확인한다.
+    check("타일↔원본 조인", len(j) == len(src), f"{len(j):,}/{len(src):,}")
+    if not len(j):
+        print("\n❌ 조인이 비었다. 타일 id 와 원본 id 형식을 확인할 것")
+        sys.exit(1)
 
     print("\n2) 속성 왕복")
     for tk, sk, scale in [("a", "area_sqm", SC["a"]), ("f", "far_pct", 1),
@@ -131,6 +136,7 @@ def main():
     }).sort_values(["b1", "b2", "g3", "s1"])
     top_tile = list(key.head(200).index)
     top_py = list(src[src["rank"].notna()].nsmallest(200, "rank").index)
+    check("Python 상위200 확보", len(top_py) == 200, f"{len(top_py)}")
     same = len(set(top_tile) & set(top_py))
     order = sum(1 for a, b in zip(top_tile, top_py) if a == b)
     check("상위200 집합", same == 200, f"{same}/200")

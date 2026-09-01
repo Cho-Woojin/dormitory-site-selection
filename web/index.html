@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5">
-<title>임대형기숙사 적합 필지 탐색 · 성북구</title>
-<meta name="description" content="개별공시지가 대비 사업성, 일조환경, 역세권을 오차범위 계층 정렬로 평가한 서울 성북구 52,970 필지 분석. 파라미터를 조정하며 후보를 탐색할 수 있습니다.">
+<title>임대형기숙사 적합 필지 탐색 · 성북구·성동구</title>
+<meta name="description" content="개별공시지가 대비 사업성, 일조환경, 역세권을 오차범위 계층 정렬로 평가한 서울 성북구·성동구 79,282 필지 분석. 파라미터를 조정하며 후보를 탐색할 수 있습니다.">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='13' font-size='13'>🏘️</text></svg>">
 <link rel="preconnect" href="https://cdn.jsdelivr.net">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
@@ -15,7 +15,7 @@
 
 <header>
   <h1>임대형기숙사 적합 필지 탐색</h1>
-  <span class="sub">성북구 52,970 필지</span>
+  <span class="sub" id="hdrSub"></span>
   <span class="spacer"></span>
   <span class="badge" id="assumptionBadge" title="공사비·전용률·실당면적·공실률·운영비율·실거래배율은 검증되지 않은 가정입니다. 투자 판단에 그대로 쓰지 마세요.">가정 포함</span>
   <button class="iconbtn" id="aboutBtn" aria-label="데이터 출처와 방법론" title="데이터 출처와 방법론">i</button>
@@ -33,6 +33,19 @@
     <button class="iconbtn mobile-only" data-collapse="params" aria-label="접기">▾</button>
   </h2>
   <div class="body">
+
+    <div class="grp">
+      <h3>대상 자치구</h3>
+      <div class="ctl">
+        <select id="sggSel" aria-describedby="sggWarn">
+          <option value="0">전체</option>
+        </select>
+        <div class="hint" id="sggWarn">
+          자치구를 섞어 보면 순위가 왜곡됩니다. 임대료를 한 값으로 가정하는데
+          공시지가는 구마다 다르기 때문입니다. 한 구씩 보고 임대료를 맞추세요.
+        </div>
+      </div>
+    </div>
 
     <div class="grp">
       <h3>계층 정렬 오차범위</h3>
@@ -151,12 +164,19 @@
   <div class="body">
     <div class="sect">
       <p class="p">개별공시지가 대비 사업성, 일조환경, 역세권을
-      <b>오차범위 계층 정렬</b>로 평가한 성북구 52,970 필지 분석입니다.
+      <b>오차범위 계층 정렬</b>로 평가한 성북구·성동구 79,282 필지 분석입니다.
       가중 평균이 아니라 우선순위가 있는 3단계 정렬이며, 오차범위를 키우면
       사업성 상위권 안에서 일조와 역세권이 순위를 재배열합니다.</p>
     </div>
 
     <div class="sect">
+      <h3 class="sh">자치구 간 비교 주의</h3>
+      <p class="p">임대료를 <b>모든 필지에 같은 값</b>으로 가정합니다. 그런데 성동구
+      후보의 공시지가 중위는 성북구의 <b>1.85배</b>입니다. 실측 결과 성동구 임대료를
+      ×1.2 로 올리면 상위 200의 구성이 성북구 197 / 성동구 3 에서 101 / 99 로 뒤집힙니다.
+      <b>자치구를 섞은 순위는 임대료 가정의 산물이지 지역 우열이 아닙니다.</b>
+      한 자치구씩 선택하고 그 지역 시세로 임대료를 맞춰 보세요.</p>
+
       <h3 class="sh">검증되지 않은 가정</h3>
       <p class="p">단위공사비 250만원/㎡, 철거비 10만원/㎡, 전용률 0.65,
       실당면적 16㎡, 공실률 0.05, 운영비율 0.25, 실거래배율 1.5, 실현계수 base 0.90.

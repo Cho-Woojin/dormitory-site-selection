@@ -1,6 +1,20 @@
 {
-  "region": "성북구",
-  "parcel_count": 52970,
+  "region": "성북구·성동구",
+  "districts": [
+    {
+      "code": "11290",
+      "name": "성북구"
+    },
+    {
+      "code": "11200",
+      "name": "성동구"
+    }
+  ],
+  "parcel_count": 79282,
+  "parcel_count_by_district": {
+    "11200": 26312,
+    "11290": 52970
+  },
   "zone_codes": {
     "1": "제1종전용주거지역",
     "2": "제2종전용주거지역",
@@ -77,7 +91,8 @@
     "F_PRICE": 32,
     "W_ROAD_UNKNOWN": 256,
     "W_ZONE2": 512,
-    "W_SUBDIVIDED": 1024
+    "W_SUBDIVIDED": 1024,
+    "W_INDUSTRIAL": 2048
   },
   "data_vintage": {
     "필지·공시지가": "2026-05-13 (AL_D194) / 공시일자 2026-04-30",

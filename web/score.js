@@ -15,7 +15,7 @@ export const GRADE_LABELS = ["A", "B", "C", "D", "E"];
 /** 하드 필터 비트 (meta.json flag_bits 와 일치해야 한다) */
 export const FLAG = {
   JIMOK: 1, ZONE: 2, LANDUSE: 4, ROAD: 8, ROOMS: 16, PRICE: 32,
-  ROAD_UNKNOWN: 256, ZONE2: 512, SUBDIVIDED: 1024,
+  ROAD_UNKNOWN: 256, ZONE2: 512, SUBDIVIDED: 1024, INDUSTRIAL: 2048,
 };
 /** 정적 제외 비트. ROOMS 는 파라미터 의존이라 매번 다시 판정한다. */
 const STATIC_EXCLUDE =
@@ -45,6 +45,7 @@ export function prepare(scoring, scale) {
     ids: scoring.ids,
     names: scoring.nm,
     zones: scoring.z,
+    sgg: scoring.g,
     area: new Float64Array(n),
     far: new Float64Array(n),
     rf: new Float64Array(n),
@@ -131,6 +132,8 @@ export function computeRanking(D, P, opts = {}) {
   const cand = [];
 
   const excludeSubdivided = !!opts.excludeSubdivided;
+  // 자치구 필터. 단일 임대료로 자치구를 비교하면 왜곡되므로 한 구씩 보게 한다.
+  const onlySgg = opts.onlySgg ? Number(opts.onlySgg) : 0;
 
   for (let i = 0; i < n; i++) {
     const f = financials(
@@ -145,6 +148,7 @@ export function computeRanking(D, P, opts = {}) {
       f.rooms >= P.min_rooms &&
       Number.isFinite(f.s1);
     if (ok && excludeSubdivided && D.flags[i] & FLAG.SUBDIVIDED) ok = false;
+    if (ok && onlySgg && D.sgg[i] !== onlySgg) ok = false;
     isCand[i] = ok ? 1 : 0;
     if (ok) cand.push(i);
   }

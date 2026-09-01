@@ -44,7 +44,8 @@ async function shot(name, opts = {}) {
       m.setPaintProperty("osm", "raster-brightness-max", dark ? 0.72 : 1);
     }
   }, theme);
-  await pg.evaluate(([c, z]) => window.__map.jumpTo({ center: c, zoom: z }), [center, zoom]);
+  // jumpTo 는 Map 객체를 반환한다. 그대로 두면 Playwright 가 직렬화하려다 멈춘다.
+  await pg.evaluate(([c, z]) => { window.__map.jumpTo({ center: c, zoom: z }); }, [center, zoom]);
   await pg.waitForTimeout(settle);
   if (setup) await setup(pg);
   await pg.screenshot({ path: `${OUT}/${name}.png` });

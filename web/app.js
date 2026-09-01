@@ -20,7 +20,8 @@ const RAMP = [
   "#5598e7", "#3987e5", "#2a78d6", "#256abf", "#1c5cab",
   "#184f95", "#104281", "#0d366b",
 ];
-const SEOUNGBUK = [127.0175, 37.6065];
+// 성북구·성동구를 함께 담는 중심점
+const REGION_CENTER = [127.0290, 37.5800];
 
 /* 베이스맵은 배경이지 주인공이 아니다. 채도를 낮춰 필지 색이 살게 하고,
  * 다크모드에서는 밝기까지 눌러 흰 종이처럼 뜨지 않게 한다. */
@@ -93,7 +94,10 @@ function enforceGradeOrder(changed) {
 function recompute() {
   const P = readParams();
   const t0 = performance.now();
-  const res = computeRanking(state.D, P, { excludeSubdivided: $("exSub").checked });
+  const res = computeRanking(state.D, P, {
+    excludeSubdivided: $("exSub").checked,
+    onlySgg: $("sggSel").value,
+  });
   state.result = res;
   state.P = P;
 
@@ -178,6 +182,7 @@ function renderDetail(id) {
 
   const tags = [];
   if (D.flags[i] & FLAG.SUBDIVIDED) tags.push(`<span class="tag warn">구분소유 추정</span>`);
+  if (D.flags[i] & FLAG.INDUSTRIAL) tags.push(`<span class="tag warn">준공업·공업지역</span>`);
   if (D.flags[i] & FLAG.ZONE2) tags.push(`<span class="tag">용도지역 걸침</span>`);
   if (D.flags[i] & FLAG.ROAD_UNKNOWN) tags.push(`<span class="tag">도로측면 미지정</span>`);
 
@@ -265,6 +270,17 @@ async function boot() {
   $("roomA").value = d.room_area_sqm;
   $("minRooms").value = d.min_rooms;
   for (const g of ["A", "B", "C", "D"]) $(`g${g}`).value = d.grades[g];
+
+  // 자치구 선택지는 meta.json 이 단일 출처
+  const sel = $("sggSel");
+  for (const dd of meta.districts || []) {
+    const o = document.createElement("option");
+    o.value = dd.code; o.textContent = dd.name;
+    sel.appendChild(o);
+  }
+  $("hdrSub").textContent =
+    `${(meta.districts || []).map((x) => x.name).join(" · ")} `
+    + `${(meta.parcel_count || 0).toLocaleString()} 필지`;
   syncLabels();
 
   setBoot("지도를 준비하는 중");
@@ -289,7 +305,7 @@ async function boot() {
       },
       layers: [{ id: "osm", type: "raster", source: "osm", paint: BASEMAP_PAINT() }],
     },
-    center: SEOUNGBUK, zoom: 12.6, minZoom: 10, maxZoom: 18,
+    center: REGION_CENTER, zoom: 12.0, minZoom: 9.5, maxZoom: 18,
     attributionControl: { compact: true },
   });
   state.map = map;
@@ -349,6 +365,15 @@ async function boot() {
     fetch("data/boundary.geojson").then((r) => r.json()),
     fetch("data/stations.geojson").then((r) => r.json()),
   ]);
+  // 자치구별 경계 bbox — 필터 시 지도 이동에 쓴다
+  state.bndByCode = {};
+  for (const f of bnd.features) {
+    const bb = new maplibregl.LngLatBounds();
+    const add = (c) => (Array.isArray(c[0]) ? c.forEach(add) : bb.extend(c));
+    add(f.geometry.coordinates);
+    state.bndByCode[String(f.properties.sgg_cd)] = bb;
+  }
+
   map.addSource("bnd", {
     type: "geojson", data: bnd,
     // CC BY 4.0 표기 의무. 지도 attribution 에도 남긴다.
@@ -426,7 +451,7 @@ async function boot() {
 /* ── UI 배선 ───────────────────────────────────────────── */
 function wireUI() {
   const inputs = ["tol1", "tol2", "rent", "deposit", "cc", "mult", "roomA",
-    "denom", "minRooms", "gA", "gB", "gC", "gD", "exSub"];
+    "denom", "minRooms", "gA", "gB", "gC", "gD", "exSub", "sggSel"];
   let timer = null;
   const onChange = (e) => {
     if (e?.target?.id?.startsWith("g")) enforceGradeOrder(e.target.id);
@@ -441,6 +466,13 @@ function wireUI() {
   inputs.forEach((id) => {
     $(id).addEventListener("input", onChange);
     $(id).addEventListener("change", onChange);
+  });
+
+  $("sggSel").addEventListener("change", () => {
+    const code = $("sggSel").value;
+    if (code === "0" || !state.bndByCode) return;
+    const b = state.bndByCode[code];
+    if (b) state.map.fitBounds(b, { padding: 60, duration: 700 });
   });
 
   $("showEx").addEventListener("change", (e) => {
@@ -461,6 +493,7 @@ function wireUI() {
     $("denom").value = "net_equity";
     for (const g of ["A", "B", "C", "D"]) $(`g${g}`).value = d.grades[g];
     $("exSub").checked = false;
+    $("sggSel").value = "0";
     syncLabels();
     recompute();
   });

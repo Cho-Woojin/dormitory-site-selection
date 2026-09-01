@@ -50,18 +50,20 @@ def fetch_stations(cfg):
         df, geometry=gpd.points_from_xy(df["lon"], df["lat"]), crs="EPSG:4326"
     ).to_crs(cfg["region"]["analysis_crs"])
 
-    # 성북구 경계 + 버퍼 — 구 밖 역이 구 안 필지의 등급을 정하는 경우가 많다
+    # 대상 구 경계 + 버퍼 — 구 밖 역이 구 안 필지의 등급을 정하는 경우가 많다
+    codes = [d["code"] for d in cfg["region"]["districts"]]
     sgg = gpd.read_file(
         RAW / "external" / "seoul_admin_boundaries" / "seoul_sgg.geojson"
     ).to_crs(st.crs)
-    gu = sgg[sgg["sgg_cd"].astype(str) == cfg["region"]["sgg_code"]]
-    if gu.empty:
-        raise SystemExit(f"경계에서 시군구 {cfg['region']['sgg_code']} 를 못 찾음")
-    buf = gu.geometry.buffer(cfg["region"]["station_buffer_m"]).union_all()
+    gu = sgg[sgg["sgg_cd"].astype(str).isin(codes)]
+    if len(gu) != len(codes):
+        raise SystemExit(f"경계에서 시군구 {codes} 를 다 못 찾음 (찾은 수 {len(gu)})")
+    inner = gu.geometry.union_all()
+    buf = inner.buffer(cfg["region"]["station_buffer_m"])
 
-    st["in_gu"] = st.within(gu.geometry.union_all())
+    st["in_gu"] = st.within(inner)
     near = st[st.within(buf)].copy()
-    print(f"  성북구 내 {int(near['in_gu'].sum())}개 + 버퍼 "
+    print(f"  대상 구 내 {int(near['in_gu'].sum())}개 + 버퍼 "
           f"{cfg['region']['station_buffer_m']}m 내 {len(near) - int(near['in_gu'].sum())}개"
           f" = {len(near)}개")
     return near
@@ -82,9 +84,10 @@ def main():
     st["line"] = lines
     st = st.reset_index(drop=True)
     print(f"  중복 노선 통합 후: {len(st)}개 지점")
-    print("\n  성북구 내 역:")
-    for _, r in st[st["in_gu"]].sort_values("name").iterrows():
-        print(f"    {r['name']:<12} {r['line']}")
+    inn = st[st["in_gu"]].sort_values("name")
+    print(f"\n  대상 구 내 역 {len(inn)}개:")
+    for _, r in inn.iterrows():
+        print(f"    {r['name']:<22} {r['line']}")
 
     INTERIM.mkdir(parents=True, exist_ok=True)
     st.to_file(INTERIM / "stations.gpkg", driver="GPKG", layer="stations")
@@ -127,7 +130,7 @@ def main():
     # 나와 등급과 어긋나므로, 검증도 같은 기준을 써야 한다.
     # 역명에 괄호 부기가 붙으므로(예: 한성대입구(삼선교)) 접두 일치로 찾는다.
     rp = g.geometry.representative_point()
-    for stn in ["한성대입구", "고려대", "길음"]:
+    for stn in ["한성대입구", "고려대", "길음", "왕십리", "성수"]:
         hit = st[st["name"].str.startswith(stn)]
         assert len(hit), f"'{stn}' 역을 수집 결과에서 못 찾음"
         near = g[rp.distance(hit.geometry.iloc[0]) <= grades["A"]]

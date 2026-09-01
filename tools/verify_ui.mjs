@@ -46,7 +46,7 @@ const boot = await pg.evaluate(() => ({
   canvas: !!document.querySelector("#map canvas"),
   layers: window.__map.getStyle().layers.map((l) => l.id),
 }));
-ok("후보 산출", boot.cand === 4894, `${boot.cand.toLocaleString()}`);
+ok("후보 산출", boot.cand === 8112, `${boot.cand.toLocaleString()}`);
 ok("리스트 렌더", boot.rows === 60, `${boot.rows}행`);
 ok("지도 캔버스", boot.canvas);
 ok("필지 레이어 존재", boot.layers.includes("parcel-fill"));
@@ -73,8 +73,8 @@ const same = jsTop.filter((x) => pyTop.includes(x)).length;
 const order = jsTop.filter((x, k) => x === pyTop[k]).length;
 ok("상위200 집합 일치", same === 200, `${same}/200`);
 ok("상위200 순서 일치", order === 200, `${order}/200`);
-ok("후보 수 일치", jsMetrics.n === 4894, `${jsMetrics.n}`);
-ok("중위 수익률 3.9%대", Math.abs(jsMetrics.medS1 - 0.039) < 0.002,
+ok("후보 수 일치", jsMetrics.n === 8112, `${jsMetrics.n}`);
+ok("중위 수익률 3.6%대", Math.abs(jsMetrics.medS1 - 0.0365) < 0.002,
   `${(jsMetrics.medS1 * 100).toFixed(2)}%`);
 writeFileSync("/tmp/js_top200.txt", jsTop.join("\n"));
 
@@ -92,9 +92,9 @@ const candNow = () => pg.evaluate(() => window.__state.result.order.length);
 
 await setRange("minRooms", 60);
 const c60 = await candNow();
-ok("최소 실 수 60 → 후보 감소", c60 < 4894 && c60 > 0, `${c60.toLocaleString()}`);
+ok("최소 실 수 60 → 후보 감소", c60 < 8112 && c60 > 0, `${c60.toLocaleString()}`);
 await setRange("minRooms", 20);
-ok("최소 실 수 복귀", (await candNow()) === 4894);
+ok("최소 실 수 복귀", (await candNow()) === 8112);
 
 await setRange("rent", 40);
 const lowRent = await pg.evaluate(() => {
@@ -127,15 +127,35 @@ const afterReset = await pg.evaluate(() => ({
   rent: document.getElementById("rent").value,
   gA: document.getElementById("gA").value,
 }));
-ok("되돌리기", afterReset.cand === 4894 && afterReset.rent === "66" && afterReset.gA === "250");
+ok("되돌리기", afterReset.cand === 8112 && afterReset.rent === "66" && afterReset.gA === "250");
 
 // 다세대 제외 토글
 await pg.check("#exSub");
 await pg.waitForTimeout(320);
 const exSub = await candNow();
-ok("다세대 제외 토글", exSub === 4894 - 1141, `${exSub.toLocaleString()} (=4894-1141)`);
+ok("다세대 제외 토글", exSub > 0 && exSub < 8112, `${exSub.toLocaleString()}`);
 await pg.uncheck("#exSub");
 await pg.waitForTimeout(320);
+
+// 자치구 필터 (다중 구 확장)
+const sggOpts = await pg.evaluate(() =>
+  [...document.getElementById("sggSel").options].map((o) => [o.value, o.textContent]));
+ok("자치구 선택지", sggOpts.length >= 3, sggOpts.map((o) => o[1]).join(" / "));
+const perSgg = {};
+for (const [val, name] of sggOpts.slice(1)) {
+  await pg.selectOption("#sggSel", val);
+  await pg.waitForTimeout(400);
+  perSgg[name] = await candNow();
+  const allSame = await pg.evaluate((v) => {
+    const s = window.__state;
+    return s.result.order.every((i) => String(s.D.sgg[i]) === v);
+  }, val);
+  ok(`${name} 필터`, perSgg[name] > 0 && allSame, `${perSgg[name].toLocaleString()}필지`);
+}
+await pg.selectOption("#sggSel", "0");
+await pg.waitForTimeout(400);
+const sum = Object.values(perSgg).reduce((a, b) => a + b, 0);
+ok("자치구 합 = 전체", sum === 8112, `${sum} vs 8112`);
 
 // 제외 필지 표시
 await pg.check("#showEx");

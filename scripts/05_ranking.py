@@ -73,6 +73,7 @@ def main():
 
     top = c.nsmallest(200, "rank")
     print(f"\n  상위 200 구성")
+    print(f"    자치구  : {dict(top['sgg_nm'].value_counts())}")
     print(f"    역세권등급: {dict(top['stn_grade'].value_counts().sort_index())}")
     print(f"    용도지역  : {dict(top['zone1'].value_counts())}")
     print(f"    S₁ 중위 {top['s1_net_equity'].median():.2%} | "
@@ -84,7 +85,7 @@ def main():
     t = top.nsmallest(15, "rank")
     view = pd.DataFrame({
         "순위": t["rank"].astype(int),
-        "소재지": t["addr"].str.replace("서울특별시 성북구 ", "", regex=False) + " " + t["jibun"],
+        "소재지": t["addr"].str.replace("서울특별시 ", "", regex=False) + " " + t["jibun"],
         "용도지역": t["zone1"].str.replace("지역", "", regex=False),
         "면적": t["area_sqm"].round(0).astype(int),
         "실수": t["rooms"].astype(int),

@@ -14,37 +14,44 @@ import numpy as np
 import pandas as pd
 
 from common import (
-    ENCODING, INTERIM, LANDPRICE_ZIP, PARCELS_SHP, PARCEL_COLS,
-    applied_far, load_config,
+    ENCODING, INTERIM, LANDPRICE_ZIP, PARCEL_COLS,
+    applied_far, load_config, parcel_shp,
 )
 
 
 def main():
     cfg = load_config()
-    sgg = cfg["region"]["sgg_code"]
+    districts = cfg["region"]["districts"]
+    codes = [d["code"] for d in districts]
 
     # ── T-201 로드 + 검증 ────────────────────────────────────────────────
     print("═" * 62)
     print("T-201  토지특성정보 로드")
-    g = gpd.read_file(PARCELS_SHP, encoding=ENCODING)
-    print(f"  필지 수      : {len(g):,}")
-    print(f"  좌표계       : {g.crs.to_string()}")
-    assert g.crs.to_epsg() == 5186, f"좌표계가 EPSG:5186이 아님: {g.crs}"
+    parts = []
+    for d in districts:
+        one = gpd.read_file(parcel_shp(d), encoding=ENCODING)
+        assert one.crs.to_epsg() == 5186, f"{d['name']} 좌표계가 EPSG:5186이 아님"
+        one["sgg_cd"] = d["code"]
+        one["sgg_nm"] = d["name"]
+        print(f"  {d['name']:<6} {d['code']}  {len(one):>7,} 필지")
+        parts.append(one)
+    g = gpd.GeoDataFrame(pd.concat(parts, ignore_index=True), crs=parts[0].crs)
+    print(f"  {'합계':<6}          {len(g):>7,} 필지   좌표계 {g.crs.to_string()}")
 
     # ── T-202 컬럼 매핑 ─────────────────────────────────────────────────
     print("\nT-202  컬럼 매핑")
     missing = set(PARCEL_COLS) - set(g.columns)
     assert not missing, f"원본에 없는 컬럼: {missing}"
-    g = g[list(PARCEL_COLS) + ["geometry"]].rename(columns=PARCEL_COLS)
+    g = g[list(PARCEL_COLS) + ["sgg_cd", "sgg_nm", "geometry"]].rename(columns=PARCEL_COLS)
 
     g["area_sqm"] = pd.to_numeric(g["area_sqm"], errors="coerce")
     g["price_krw_sqm"] = pd.to_numeric(g["price_krw_sqm"], errors="coerce")
 
     bad_len = (g["pnu"].str.len() != 19).sum()
     dup = g["pnu"].duplicated().sum()
-    wrong_sgg = (~g["pnu"].str.startswith(sgg)).sum()
+    wrong_sgg = (g["pnu"].str[:5] != g["sgg_cd"]).sum()
     print(f"  PNU 19자리 아님 : {bad_len:,}")
-    print(f"  PNU 중복        : {dup:,}")
+    print(f"  PNU 중복        : {dup:,}   (자치구 간 포함)")
     print(f"  시군구코드 불일치: {wrong_sgg:,}")
     assert bad_len == 0 and dup == 0 and wrong_sgg == 0, "PNU 무결성 실패"
     print(f"  면적 결측       : {g['area_sqm'].isna().sum():,}")
@@ -74,10 +81,12 @@ def main():
     )
     print(f"  용도지역 2곳에 걸친 필지: {g['straddles_zone'].sum():,} (zone1 채택)")
 
-    dist = g["zone1"].value_counts()
-    print("\n  용도지역 분포:")
-    for z, n in dist.head(9).items():
-        print(f"    {z:<14} {n:>6,}  {n / len(g):>5.1%}")
+    print("\n  용도지역 분포 (자치구별):")
+    ct = pd.crosstab(g["zone1"], g["sgg_nm"])
+    ct["합계"] = ct.sum(axis=1)
+    for z, row in ct.sort_values("합계", ascending=False).head(10).iterrows():
+        cells = "  ".join(f"{c} {row[c]:>6,}" for c in ct.columns[:-1])
+        print(f"    {z:<14} {cells}   계 {row['합계']:>6,} ({row['합계'] / len(g):>4.1%})")
 
     # ── T-206 공시지가 갱신 ─────────────────────────────────────────────
     print("\nT-206  AL_D151 개별공시지가 갱신")
@@ -88,9 +97,9 @@ def main():
                 f, encoding=ENCODING, dtype={"고유번호": str},
                 usecols=["고유번호", "공시지가", "공시일자", "데이터기준일자"],
             )
-    lp = lp[lp["고유번호"].str.startswith(sgg)]
+    lp = lp[lp["고유번호"].str[:5].isin(codes)]
     lp = lp.drop_duplicates("고유번호").set_index("고유번호")
-    print(f"  성북구 레코드   : {len(lp):,}   공시일자: {lp['공시일자'].mode()[0]}")
+    print(f"  대상 구 레코드  : {len(lp):,}   공시일자: {lp['공시일자'].mode()[0]}")
 
     joined = g["pnu"].map(lp["공시지가"])
     rate = joined.notna().mean()
