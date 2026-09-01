@@ -59,7 +59,8 @@ ok("후보 산출", boot.cand === 8602, `${boot.cand.toLocaleString()}`);
 ok("리스트 렌더", boot.rows === 60, `${boot.rows}행`);
 ok("지도 캔버스", boot.canvas);
 ok("필지 레이어 존재", boot.layers.includes("parcel-fill"));
-ok("역 레이어 존재", boot.layers.includes("stn-dot") && boot.layers.includes("stn-label"));
+// 역 이름은 심볼 레이어가 아니라 HTML 마커다 (글리프 의존 제거). 상세는 3d.
+ok("역 레이어 존재", boot.layers.includes("stn-dot"));
 ok("콘솔 에러 없음", pg.errors.length === 0, pg.errors.slice(0, 2).join(" | "));
 
 // ── 2. Python 대조 (핵심) ────────────────────────────────
@@ -421,6 +422,47 @@ await pg.evaluate(() => {
   document.getElementById("sggSel").dispatchEvent(new Event("change", { bubbles: true }));
 });
 await pg.waitForTimeout(600);
+
+// ── 3d. 역 라벨 (글리프 의존 없음) ────────────────────────
+globalThis.__sec = "3d)";
+console.log("\n3d) 역 라벨");
+// 심볼 레이어를 하나라도 쓰면 글리프를 받아야 하고, 그 의존이 끊기면
+// 라벨이 아니라 렌더 패스가 통째로 죽는다 (실제로 겪음).
+const glyph = await pg.evaluate(() => {
+  const st = window.__map.getStyle();
+  return { glyphs: st.glyphs || null, symbols: st.layers.filter((l) => l.type === "symbol").map((l) => l.id) };
+});
+ok("심볼 레이어 없음", glyph.symbols.length === 0, glyph.symbols.join(",") || "0개");
+ok("글리프 URL 없음", !glyph.glyphs, glyph.glyphs || "없음");
+
+const lbl = await pg.evaluate(async () => {
+  const m = window.__map;
+  const vis = () => (window.__state.stnLabels || [])
+    .filter((k) => k.getElement().style.display !== "none");
+  const jump = (c, z) => new Promise((r) => {
+    m.jumpTo({ center: c, zoom: z }); m.once("idle", () => setTimeout(r, 400));
+  });
+  await jump([127.0055, 37.6123], 15.6);          // 정릉동
+  const near = vis().map((k) => k.getElement().textContent);
+  await jump([127.0055, 37.6123], 12.0);          // 축소
+  const far = vis().length;
+  await jump([127.0455, 37.5445], 16.5);          // 성수
+  const seongsu = vis().map((k) => k.getElement().textContent);
+  // 겹침 회피가 실제로 동작하는가
+  const boxes = vis().map((k) => {
+    const r = k.getElement().getBoundingClientRect();
+    return { x: r.left, y: r.top, w: r.width };
+  });
+  let overlap = 0;
+  for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++)
+    if (Math.abs(boxes[i].x - boxes[j].x) < 40 && Math.abs(boxes[i].y - boxes[j].y) < 12) overlap++;
+  return { near, far, seongsu, overlap, total: (window.__state.stnLabels || []).length };
+});
+ok("역 마커 전량 생성", lbl.total >= 80, `${lbl.total}개`);
+ok("확대 시 역 이름 표시", lbl.near.length > 0, lbl.near.slice(0, 3).join(", ") || "없음");
+ok("성수 일대 역 이름 표시", lbl.seongsu.length > 0, lbl.seongsu.slice(0, 3).join(", ") || "없음");
+ok("줌 13.2 미만에서는 숨김", lbl.far === 0, `${lbl.far}개`);
+ok("라벨 겹침 없음", lbl.overlap === 0, `겹침 ${lbl.overlap}쌍`);
 
 // ── 4. 선택·상세 ─────────────────────────────────────────
 globalThis.__sec = "4)";

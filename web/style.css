@@ -441,3 +441,12 @@ select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 }
 .hubpin:hover { background: #0ca30c; }
 .hubpin:focus-visible { outline: 2px solid var(--accent-text); outline-offset: 2px; }
+
+/* 역 이름. 심볼 레이어 대신 HTML 마커라 페이지 폰트를 그대로 쓴다. */
+.stnlabel {
+  font: 500 11px/1.25 inherit;
+  color: var(--ink); white-space: nowrap; pointer-events: none;
+  /* 지도 위 어떤 색 위에도 읽히도록 후광. 심볼의 text-halo 대체 */
+  text-shadow: 0 0 2px var(--surface), 0 0 2px var(--surface),
+               0 0 3px var(--surface), 0 0 4px var(--surface);
+}

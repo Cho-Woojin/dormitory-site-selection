@@ -478,6 +478,30 @@ function removeSite(id) {
   paintHubs();
 }
 
+// 역 라벨 배치. 심볼 레이어가 해 주던 일(줌 하한·뷰포트 컬링·겹침 회피)을 대신한다.
+const STN_MIN_ZOOM = 13.2;
+function placeStnLabels() {
+  const map = state.map;
+  if (!map || !state.stnLabels) return;
+  const on = map.getZoom() >= STN_MIN_ZOOM;
+  const { width, height } = map.getCanvas().getBoundingClientRect();
+  const placed = [];
+  for (const mk of state.stnLabels) {
+    const el = mk.getElement();
+    if (!on) { el.style.display = "none"; continue; }
+    const p = map.project(mk.getLngLat());
+    // 화면 밖이면 배치 계산에서 빼 준다 (역 89개 × 이동마다이므로 값싸야 한다)
+    if (p.x < -60 || p.y < -20 || p.x > width + 60 || p.y > height + 30) {
+      el.style.display = "none";
+      continue;
+    }
+    // 겹치면 뒤에 오는 쪽을 숨긴다 (symbol 의 text-allow-overlap:false 와 같은 규칙)
+    const hit = placed.some((q) => Math.abs(q.x - p.x) < 54 && Math.abs(q.y - p.y) < 15);
+    el.style.display = hit ? "none" : "";
+    if (!hit) placed.push(p);
+  }
+}
+
 function paintHubs() {
   const ids = state.sites.flatMap((s) => s.indices.map((i) => state.D.ids[i]));
   for (const l of ["parcel-hub", "parcel-hub-line"]) {
@@ -760,7 +784,10 @@ async function boot() {
     container: "map",
     style: {
       version: 8,
-      glyphs: "https://fonts.openmaptiles.org/{fontstack}/{range}.pbf",
+      // glyphs 를 두지 않는다. 심볼 레이어가 하나도 없기 때문이다.
+      // fonts.openmaptiles.org 는 없는 폰트에 404 가 아니라 200 + HTML 을 돌려준다.
+      // MapLibre 는 그 HTML 을 pbf 로 파싱하다 "Unimplemented type: 4" 로 죽고,
+      // 같은 렌더 패스의 다른 레이어까지 사라진다. 라벨은 HTML 마커로 그린다.
       sources: {
         osm: {
           type: "raster",
@@ -900,15 +927,19 @@ async function boot() {
       "circle-color": "#1c5cab", "circle-stroke-color": "#ffffff", "circle-stroke-width": 1.4,
     },
   });
-  map.addLayer({
-    id: "stn-label", type: "symbol", source: "stn", minzoom: 13.2,
-    layout: {
-      "text-field": ["get", "name"], "text-font": ["Noto Sans Regular"],
-      "text-size": 11, "text-offset": [0, 1.1], "text-anchor": "top",
-      "text-allow-overlap": false,
-    },
-    paint: { "text-color": "#22221f", "text-halo-color": "#ffffff", "text-halo-width": 1.6 },
+  // 역 이름은 HTML 마커로 그린다. 심볼 레이어를 쓰면 글리프를 받아야 하는데,
+  // 그 의존이 조용히 끊기면 라벨이 사라지는 정도가 아니라 렌더 패스가 통째로 죽는다.
+  state.stnLabels = stn.features.map((f) => {
+    const el = document.createElement("span");
+    el.className = "stnlabel";
+    el.textContent = f.properties.name;
+    el.setAttribute("aria-hidden", "true");   // 지도 밖 목록·상세에 같은 정보가 있다
+    return new maplibregl.Marker({ element: el, anchor: "top", offset: [0, 6] })
+      .setLngLat(f.geometry.coordinates).addTo(map);
   });
+  placeStnLabels();
+  map.on("moveend", placeStnLabels);
+  map.on("zoomend", placeStnLabels);
 
   // 이름·용도지역은 scoring.json 에서 온다. 타일에서 긁으면 화면 밖 필지의
   // 이름을 못 찾아 리스트에 PNU 가 노출된다.
