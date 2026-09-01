@@ -431,12 +431,73 @@ const asmHub = await pg.evaluate(() => {
 });
 ok("합필을 거점으로 담기", asmHub.n === 1 && asmHub.parcels === 5, `${asmHub.parcels}필지`);
 ok("합필 순위 비교 (가상 순위)", asmHub.rank > 0 && asmHub.virtual === true, `${asmHub.rank}위 상당`);
+
+// 거점 수를 줄이면 실제로 줄어야 한다. pickHubs 는 fixed 포함 총합 n 을
+// 목표로 하므로, 이전 자동분을 fixed 로 넘기면 8→3 이 아무 변화도 없다.
+const setCount = async (v) => {
+  await pg.evaluate((n) => {
+    const e = document.getElementById("hubN");
+    e.value = n; e.dispatchEvent(new Event("input", { bubbles: true }));
+  }, String(v));
+  await pg.click("#hubAuto");
+  await pg.waitForTimeout(800);
+  return pg.evaluate(() => window.__state.sites.length);
+};
+await pg.evaluate(() => {
+  const e = document.getElementById("hubD");
+  e.value = "0"; e.dispatchEvent(new Event("input", { bubbles: true }));
+  if (window.__state.sites.length) document.getElementById("hubClear").click();
+});
+const c8 = await setCount(8), c3 = await setCount(3), c6 = await setCount(6);
+ok("거점 수 8곳", c8 === 8, `${c8}곳`);
+ok("8→3 으로 줄어듦", c3 === 3, `${c3}곳`);
+ok("3→6 으로 늘어남", c6 === 6, `${c6}곳`);
+
+// 손으로 담은 거점(합필)은 다시 자동 선정해도 남아야 한다
+const keep = await pg.evaluate(async () => {
+  const s = window.__state;
+  const i = s.D.names.findIndex((n) => n === "성동구 성수동2가 299-19");
+  s.asm = [i, ...(s.D.adj[i] || []).slice(0, 4)];
+  window.__renderAsm();
+  document.getElementById("asmHub").click();
+  const e = document.getElementById("hubN");
+  e.value = "3"; e.dispatchEvent(new Event("input", { bubbles: true }));
+  document.getElementById("hubAuto").click();
+  await new Promise((r) => setTimeout(r, 700));
+  return { total: s.sites.length, manual: s.sites.filter((x) => !x.auto).length,
+           hasAsm: s.sites.some((x) => x.indices.length > 1) };
+});
+ok("자동 선정이 수동 거점을 지우지 않음", keep.manual === 1 && keep.hasAsm,
+  `총 ${keep.total} · 수동 ${keep.manual}`);
+
+// 목록 이름·지도 핀 어느 쪽을 눌러도 그 거점으로 이동해야 한다
+const fly = await pg.evaluate(async () => {
+  const m = window.__map;
+  m.jumpTo({ center: [127.02, 37.56], zoom: 11.5 });
+  await new Promise((r) => setTimeout(r, 400));
+  const z0 = m.getZoom();
+  document.querySelector("#hubBody .site .nm").click();
+  await new Promise((r) => setTimeout(r, 1500));
+  const byName = { z: m.getZoom(), on: document.querySelectorAll("#hubBody .site.on").length };
+  m.jumpTo({ center: [127.02, 37.56], zoom: 11.5 });
+  await new Promise((r) => setTimeout(r, 400));
+  (window.__state.hubPins || [])[1]?.getElement().click();
+  await new Promise((r) => setTimeout(r, 1500));
+  return { z0, byName, byPin: m.getZoom() };
+});
+ok("목록 이름 클릭 → 해당 거점으로 확대", fly.byName.z > fly.z0 + 2,
+  `줌 ${fly.z0.toFixed(1)} → ${fly.byName.z.toFixed(1)}`);
+ok("이동한 거점이 목록에 표시됨", fly.byName.on === 1, `${fly.byName.on}개`);
+ok("지도 핀 클릭 → 해당 거점으로 확대", fly.byPin > fly.z0 + 2,
+  `줌 ${fly.z0.toFixed(1)} → ${fly.byPin.toFixed(1)}`);
+
 await pg.evaluate(() => {
   document.getElementById("hubClear").click();
   window.__state.asm = [];
   document.getElementById("asmMode").checked = false;
-  document.getElementById("asm").hidden = true;
-  document.body.classList.remove("has-asm");
+  window.__renderAsm();
+});
+await pg.evaluate(() => {
   document.getElementById("sggSel").value = "0";
   document.getElementById("sggSel").dispatchEvent(new Event("change", { bubbles: true }));
 });
@@ -530,6 +591,33 @@ ok("출처 표기가 실제 공시일자를 담음",
   Object.keys(priceRef.dates).every((d) => srcTxt.includes(d)), srcTxt);
 await pg.evaluate(() => document.getElementById("detailClose")?.click());
 await pg.waitForTimeout(300);
+
+// ── 3f. 파라미터 패널 접기 ───────────────────────────────
+globalThis.__sec = "3f)";
+console.log("\n3f) 파라미터 접기");
+const ham = await pg.evaluate(async () => {
+  const btn = document.getElementById("paramsBtn");
+  const vis = () => getComputedStyle(document.getElementById("params")).display !== "none";
+  const open0 = vis();
+  btn.click(); await new Promise((r) => setTimeout(r, 250));
+  const closed = vis(), aria1 = btn.getAttribute("aria-expanded");
+  let saved = null; try { saved = localStorage.getItem("dss-params"); } catch {}
+  btn.click(); await new Promise((r) => setTimeout(r, 250));
+  const reopened = vis(), aria2 = btn.getAttribute("aria-expanded");
+  // 키보드 단축키
+  document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "p", bubbles: true }));
+  await new Promise((r) => setTimeout(r, 250));
+  const byKey = vis();
+  document.getElementById("paramsBtn").click();
+  await new Promise((r) => setTimeout(r, 250));
+  return { open0, closed, reopened, aria1, aria2, saved, byKey, final: vis() };
+});
+ok("기본은 펼침", ham.open0 === true);
+ok("햄버거로 접힘", ham.closed === false, `aria-expanded ${ham.aria1}`);
+ok("다시 펼침", ham.reopened === true, `aria-expanded ${ham.aria2}`);
+ok("접힘 상태를 기억", ham.saved === "0", `저장값 ${ham.saved}`);
+ok("P 키로도 토글", ham.byKey === false);
+ok("복구됨", ham.final === true);
 
 // ── 4. 선택·상세 ─────────────────────────────────────────
 globalThis.__sec = "4)";

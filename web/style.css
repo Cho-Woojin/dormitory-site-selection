@@ -130,6 +130,13 @@ header .spacer { flex: 1; }
 }
 #params { top: calc(var(--header-h) + 12px); left: 12px; width: 302px;
           max-height: calc(100vh - var(--header-h) - 24px); }
+/* 햄버거로 접으면 패널을 아예 치운다 — 지도를 넓게 쓰라는 요청이므로
+   본문만 감추는 것으로는 부족하다. */
+body.params-off #params { display: none; }
+#paramsBtn { margin-right: 2px; }
+body.params-off #paramsBtn { background: var(--surface-3); }
+.desktop-only { display: inline-grid; }
+@media (max-width: 900px) { .desktop-only { display: none; } }
 /* 상세 패널도 좌측 하단이라, 열리면 파라미터 높이를 줄여 겹치지 않게 한다. */
 body.has-detail #params { max-height: calc(100vh - var(--header-h) - 46vh - 36px); }
 /* 합필 패널도 좌측 하단이므로 파라미터 높이를 줄인다 */
@@ -160,12 +167,21 @@ body.has-asm #params { max-height: calc(100vh - var(--header-h) - 62vh - 36px); 
   color: var(--accent-ink); display: grid; place-items: center;
   font-size: 11px; font-weight: 700;
 }
-#hub .site .nm { font-weight: 550; }
+/* 이름은 버튼이다 — 누르면 그 거점으로 지도가 이동한다 */
+#hub .site .nm {
+  font: inherit; font-weight: 550; color: var(--ink);
+  border: 0; background: transparent; padding: 0; text-align: left;
+  cursor: pointer; display: block; width: 100%;
+}
+#hub .site .nm:hover { color: var(--accent-text); text-decoration: underline; }
+#hub .site .nm:focus-visible { outline: 2px solid var(--accent-text); outline-offset: 2px; }
+/* 지금 보고 있는 거점 */
+#hub .site.on { background: var(--surface-2); border-radius: 6px; }
 #hub .site .meta { font-size: 11px; color: var(--ink-3); margin-top: 1px; }
 #hub .site .y { color: var(--accent-text); font-weight: 650; font-variant-numeric: tabular-nums; }
-#hub .site button { border: 0; background: transparent; color: var(--ink-3);
+#hub .site button[data-site] { border: 0; background: transparent; color: var(--ink-3);
   cursor: pointer; font-size: 13px; padding: 0 2px; }
-#hub .site button:hover { color: var(--ink); }
+#hub .site button[data-site]:hover { color: var(--ink); }
 #hub .tot {
   margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border);
 }
@@ -399,12 +415,21 @@ select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
   color: var(--accent-ink); display: grid; place-items: center;
   font-size: 11px; font-weight: 700;
 }
-#hub .site .nm { font-weight: 550; }
+/* 이름은 버튼이다 — 누르면 그 거점으로 지도가 이동한다 */
+#hub .site .nm {
+  font: inherit; font-weight: 550; color: var(--ink);
+  border: 0; background: transparent; padding: 0; text-align: left;
+  cursor: pointer; display: block; width: 100%;
+}
+#hub .site .nm:hover { color: var(--accent-text); text-decoration: underline; }
+#hub .site .nm:focus-visible { outline: 2px solid var(--accent-text); outline-offset: 2px; }
+/* 지금 보고 있는 거점 */
+#hub .site.on { background: var(--surface-2); border-radius: 6px; }
 #hub .site .meta { font-size: 11px; color: var(--ink-3); margin-top: 1px; }
 #hub .site .y { color: var(--accent-text); font-weight: 650; font-variant-numeric: tabular-nums; }
-#hub .site button { border: 0; background: transparent; color: var(--ink-3);
+#hub .site button[data-site] { border: 0; background: transparent; color: var(--ink-3);
   cursor: pointer; font-size: 13px; padding: 0 2px; }
-#hub .site button:hover { color: var(--ink); }
+#hub .site button[data-site]:hover { color: var(--ink); }
 #hub .tot {
   margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border);
 }

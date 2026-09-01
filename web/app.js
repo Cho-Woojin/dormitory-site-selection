@@ -193,11 +193,8 @@ function renderDetail(id) {
   const el = $("detailBody");
   $("detailName").textContent = state.nameOf(id) || id;
   $("detail").hidden = false;
-  document.body.classList.add("has-detail");
-  if (!$("asm").hidden && !$("asmMode").checked) {
-    $("asm").hidden = true;
-    document.body.classList.remove("has-asm");
-  }
+  if (!$("asm").hidden && !$("asmMode").checked) $("asm").hidden = true;
+  syncPanelFlags();
 
   if (i === undefined) {
     // scoring.json 에 없다 = 정적 필터에서 이미 걸린 필지
@@ -334,6 +331,14 @@ function asmToggle(id) {
   return true;
 }
 
+/* 패널 열림 상태를 body 클래스에 반영. 레이아웃(높이 제한)이 여기에 달려
+   있는데 토글이 코드 다섯 군데에 흩어져 있어 한 경로가 빠지면 패널이 겹쳤다. */
+function syncPanelFlags() {
+  document.body.classList.toggle("has-asm", !$("asm").hidden);
+  document.body.classList.toggle("has-detail", !$("detail").hidden);
+  document.body.classList.toggle("has-hub", !$("hub").hidden);
+}
+
 function paintAsm() {
   const ids = state.asm.map((i) => state.D.ids[i]);
   state.map.setFilter("parcel-asm", ["in", ["get", "id"], ["literal", ids]]);
@@ -347,12 +352,13 @@ function renderAsm() {
   $("asmCount").textContent = state.asm.length ? String(state.asm.length) : "";
   if (!state.asm.length) {
     $("asm").hidden = !$("asmMode").checked;
-    document.body.classList.toggle("has-asm", !$("asm").hidden);
+    syncPanelFlags();
     el.innerHTML = `<div class="empty">지도에서 필지를 눌러 담으세요.<br>
       규모 미달 필지도 담을 수 있습니다.</div>`;
     return;
   }
   $("asm").hidden = false;
+  syncPanelFlags();
 
   const D = state.D;
   const items = state.asm.map((i) => ({
@@ -481,10 +487,12 @@ function gradeFromDist(d, g) {
   return d <= g.A ? 0 : d <= g.B ? 1 : d <= g.C ? 2 : d <= g.D ? 3 : 4;
 }
 
-function addSite(indices, hull) {
+function addSite(indices, hull, auto = false) {
   const key = indices.slice().sort((a, b) => a - b).join(",");
   if (state.sites.some((s) => s.key === key)) return false;
-  state.sites.push({ id: ++siteSeq, key, indices: indices.slice(), hull: hull || null });
+  // 자동 선정분과 손으로 담은 것을 구분한다. 다시 자동 선정할 때
+  // 손으로 담은 거점(합필 포함)은 남기고 자동분만 갈아끼운다.
+  state.sites.push({ id: ++siteSeq, key, auto, indices: indices.slice(), hull: hull || null });
   renderHub();
   paintHubs();
   return true;
@@ -521,6 +529,26 @@ function placeStnLabels() {
   }
 }
 
+/* 거점으로 지도를 옮긴다. 목록의 이름과 지도 위 번호 어느 쪽을 눌러도 같다.
+   합필은 여러 필지라 범위로, 단일 필지는 지점으로 맞춘다. */
+function flyToSite(site) {
+  const D = state.D;
+  const pts = site.indices.map((i) => [D.lon[i], D.lat[i]]);
+  if (!pts.length) return;
+  if (pts.length === 1) {
+    state.map.flyTo({ center: pts[0], zoom: 17.2, duration: 700 });
+  } else {
+    const b = pts.reduce((acc, p) => acc.extend(p),
+      new maplibregl.LngLatBounds(pts[0], pts[0]));
+    state.map.fitBounds(b, { padding: 140, maxZoom: 17.6, duration: 700 });
+  }
+  // 어느 거점을 보고 있는지 목록에서도 보이게 한다
+  document.querySelectorAll("#hubBody .site").forEach((r) =>
+    r.classList.toggle("on", r.id === `site-${site.id}`));
+  document.getElementById(`site-${site.id}`)
+    ?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+}
+
 function paintHubs() {
   const ids = state.sites.flatMap((s) => s.indices.map((i) => state.D.ids[i]));
   for (const l of ["parcel-hub", "parcel-hub-line"]) {
@@ -541,7 +569,7 @@ function paintHubs() {
     el.title = s._nm || "";
     el.addEventListener("click", (e) => {
       e.stopPropagation();
-      document.getElementById(`site-${s.id}`)?.scrollIntoView({ block: "nearest" });
+      flyToSite(s);
     });
     return new maplibregl.Marker({ element: el })
       .setLngLat([x / a, y / a]).addTo(state.map);
@@ -549,18 +577,21 @@ function paintHubs() {
 }
 
 function hubAuto() {
-  const P = state.P, D = state.D;
+  const D = state.D;
   const n = +$("hubN").value;
   const minD = +$("hubD").value;
-  // 이미 담은 거점(합필 포함)은 유지하고 나머지를 채운다
+  // 자동 선정은 **다시 뽑기**다. 이전 자동분을 남겨 두면 거점 수를 줄여도
+  // 줄지 않는다 (pickHubs 는 fixed 를 포함한 총합 n 을 목표로 하므로
+  // 8곳이 남아 있는 채로 3을 요청하면 즉시 종료한다).
+  state.sites = state.sites.filter((s) => !s.auto);
   const fixed = state.sites.map((s) => siteCenter(s.indices, D));
   const used = new Set(state.sites.flatMap((s) => s.indices));
   const order = state.result.order.filter((i) => !used.has(i));
   const picked = pickHubs(order, D, { n, minDist: minD, fixed });
-  for (const i of picked) addSite([i]);
+  for (const i of picked) addSite([i], null, true);
   state.hubTried = true;
-  if (!state.sites.length) return;
   renderHub();
+  paintHubs();
 }
 
 function renderHub() {
@@ -568,9 +599,11 @@ function renderHub() {
   $("hubCount").textContent = state.sites.length ? String(state.sites.length) : "";
   if (!state.sites.length) {
     $("hub").hidden = true;
+    syncPanelFlags();
     return;
   }
   $("hub").hidden = false;
+  syncPanelFlags();
   const D = state.D;
 
   const rows = state.sites.map((s, k) => {
@@ -585,7 +618,7 @@ function renderHub() {
       : "순위 밖";
     return `<div class="site" id="site-${s.id}">
       <span class="no">${k + 1}</span>
-      <div><div class="nm"></div><div class="meta num">${Math.round(m.area).toLocaleString()}㎡ ·
+      <div><button class="nm" data-go="${s.id}" title="이 거점으로 이동"></button><div class="meta num">${Math.round(m.area).toLocaleString()}㎡ ·
         ${m.rooms}실 · ${GRADE_LABELS[m.grade]}등급 ${Math.round(m.dist).toLocaleString()}m · ${rk}</div></div>
       <span class="y">${(m.s1 * 100).toFixed(2)}%</span>
       <button data-site="${s.id}" aria-label="빼기">✕</button>
@@ -635,7 +668,12 @@ function renderHub() {
     s._nm = row.querySelector(".nm").textContent;   // 지도 핀 툴팁이 같은 이름을 쓴다
   });
   el.querySelectorAll("[data-site]").forEach((b) =>
-    b.addEventListener("click", () => removeSite(+b.dataset.site)));
+    b.addEventListener("click", (e) => { e.stopPropagation(); removeSite(+b.dataset.site); }));
+  el.querySelectorAll("[data-go]").forEach((b) =>
+    b.addEventListener("click", () => {
+      const site = state.sites.find((s) => s.id === +b.dataset.go);
+      if (site) flyToSite(site);
+    }));
 }
 
 /* ── 범위 그리기 ─────────────────────────────────────────
@@ -1139,7 +1177,7 @@ function wireUI() {
       state.asm = [];
       paintAsm();
       $("asm").hidden = true;
-      document.body.classList.remove("has-asm");
+      syncPanelFlags();
     } else {
       // 합필 모드에서는 상세 패널을 닫는다 (같은 자리)
       if (!$("detail").hidden) $("detailClose").click();
@@ -1156,12 +1194,12 @@ function wireUI() {
     state.asm = [];
     paintAsm();
     $("asm").hidden = true;
-    document.body.classList.remove("has-asm");
+    syncPanelFlags();
   });
 
   $("detailClose").addEventListener("click", () => {
     $("detail").hidden = true;
-    document.body.classList.remove("has-detail");
+    syncPanelFlags();
     state.selected = null;
     for (const l of ["parcel-selected", "parcel-selected-casing"]) {
       state.map.setFilter(l, ["==", ["get", "id"], ""]);
@@ -1189,6 +1227,23 @@ function wireUI() {
     }
   });
 
+  // 파라미터 패널 접기/펼치기. 지도를 넓게 보고 싶다는 요구가 잦아
+  // 헤더의 햄버거로 어느 화면에서나 여닫는다. 선택은 기억한다.
+  const setParams = (open) => {
+    document.body.classList.toggle("params-off", !open);
+    $("paramsBtn").setAttribute("aria-expanded", String(open));
+    try { localStorage.setItem("dss-params", open ? "1" : "0"); } catch {}
+  };
+  const toggleParams = () => setParams(document.body.classList.contains("params-off"));
+  $("paramsBtn").addEventListener("click", toggleParams);
+  $("paramsClose").addEventListener("click", () => setParams(false));
+  let savedParams = null;
+  try { savedParams = localStorage.getItem("dss-params"); } catch {}
+  // 기본값은 열림. 좁은 화면은 지도가 먼저라 닫아 둔다.
+  setParams(savedParams !== null
+    ? savedParams === "1"
+    : !matchMedia("(max-width: 900px)").matches);
+
   // 모바일은 지도가 먼저 보여야 한다. 파라미터는 접은 채로 시작.
   if (matchMedia("(max-width: 900px)").matches) {
     $("params").dataset.collapsed = "true";
@@ -1209,6 +1264,8 @@ function wireUI() {
   });
 
   addEventListener("keydown", (e) => {
+    const typing = /^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName);
+    if (!typing && (e.key === "p" || e.key === "P")) { toggleParams(); return; }
     if (e.key === "Enter" && state.draw.on) { drawFinish(); return; }
     if (e.key !== "Escape") return;
     if (state.draw.on) { drawCancel(); return; }
