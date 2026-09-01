@@ -74,7 +74,7 @@ const order = jsTop.filter((x, k) => x === pyTop[k]).length;
 ok("상위200 집합 일치", same === 200, `${same}/200`);
 ok("상위200 순서 일치", order === 200, `${order}/200`);
 ok("후보 수 일치", jsMetrics.n === 8112, `${jsMetrics.n}`);
-ok("중위 수익률 3.6%대", Math.abs(jsMetrics.medS1 - 0.0365) < 0.002,
+ok("중위 수익률 3.6%대", Math.abs(jsMetrics.medS1 - 0.0364) < 0.002,
   `${(jsMetrics.medS1 * 100).toFixed(2)}%`);
 writeFileSync("/tmp/js_top200.txt", jsTop.join("\n"));
 
@@ -96,13 +96,13 @@ ok("최소 실 수 60 → 후보 감소", c60 < 8112 && c60 > 0, `${c60.toLocale
 await setRange("minRooms", 20);
 ok("최소 실 수 복귀", (await candNow()) === 8112);
 
-await setRange("rent", 40);
+await setRange("rent", 45);
 const lowRent = await pg.evaluate(() => {
   const s = window.__state, r = s.result;
   return r.s1[r.order[0]];
 });
-ok("임대료 40만원 → 수익률 하락", lowRent < 0.045, `1위 ${(lowRent * 100).toFixed(2)}%`);
-await setRange("rent", 66);
+ok("임대료 45만원 → 수익률 하락", lowRent < 0.045, `1위 ${(lowRent * 100).toFixed(2)}%`);
+await setRange("rent", 85);
 
 await setRange("tol1", 0);
 const tol0 = await pg.evaluate(() => {
@@ -127,7 +127,7 @@ const afterReset = await pg.evaluate(() => ({
   rent: document.getElementById("rent").value,
   gA: document.getElementById("gA").value,
 }));
-ok("되돌리기", afterReset.cand === 8112 && afterReset.rent === "66" && afterReset.gA === "250");
+ok("되돌리기", afterReset.cand === 8112 && afterReset.rent === "85" && afterReset.gA === "250");
 
 // 다세대 제외 토글
 await pg.check("#exSub");

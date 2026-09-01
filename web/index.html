@@ -63,13 +63,15 @@
     <div class="grp">
       <h3>사업성 가정</h3>
       <div class="ctl">
-        <label for="rent">실당 월임대료 <span class="v"><span id="rentv">66</span>만원</span></label>
-        <input type="range" id="rent" min="30" max="120" step="1" value="66">
-        <div class="hint">2026년 고려대 인근 원룸 평균 66.3만원</div>
+        <label for="rent">실당 월임대료 <span class="v"><span id="rentv">85</span>만원</span></label>
+        <input type="range" id="rent" min="40" max="180" step="1" value="85">
+        <div class="hint">코리빙 실거래: 맹그로브 신설 79.8만(~15㎡) · 신촌 98~120만(14~15㎡)
+          · 에피소드 신당 145만(22.1㎡)</div>
       </div>
       <div class="ctl">
-        <label for="deposit">실당 보증금 <span class="v"><span id="depositv">1,000</span>만원</span></label>
-        <input type="range" id="deposit" min="0" max="5000" step="100" value="1000">
+        <label for="deposit">실당 보증금 <span class="v"><span id="depositv">500</span>만원</span></label>
+        <input type="range" id="deposit" min="0" max="3000" step="100" value="500">
+        <div class="hint">코리빙 관행 300~500만원</div>
       </div>
       <div class="ctl">
         <label for="cc">단위공사비 <span class="v"><span id="ccv">250</span>만원/㎡</span></label>
@@ -179,10 +181,21 @@
 
       <h3 class="sh">검증되지 않은 가정</h3>
       <p class="p">단위공사비 250만원/㎡, 철거비 10만원/㎡, 전용률 0.65,
-      실당면적 16㎡, 공실률 0.05, 운영비율 0.25, 실거래배율 1.5, 실현계수 base 0.90.
+      실당면적 16㎡, 공실률 0.05, 실거래배율 1.5, 실현계수 base 0.90.
       <b>실제 견적과 시세로 보정하기 전까지 투자 판단에 그대로 쓰면 안 됩니다.</b></p>
       <p class="p">용도지역·필지형상·지형·공시지가·접도조건·건물높이는 실측값이고,
-      용적률·건폐율은 서울시 도시계획조례 원문, 임대료·보증금은 2026년 성북구 시세입니다.</p>
+      용적률·건폐율은 서울시 도시계획조례 원문입니다.</p>
+
+      <h3 class="sh">임대료 기준: 코리빙 실거래</h3>
+      <p class="p">임대형기숙사는 신축이라 실거래 데이터가 없습니다. 운영 중인 코리빙(공유주거)
+      실거래를 벤치마크로 씁니다. 맹그로브 신설 79.8만원(~15㎡), 신촌 98~120만원(14~15.3㎡),
+      에피소드 신당 145만원(22.1㎡), 강남262 160만원(21.9㎡).</p>
+      <p class="p">성북·성동은 신촌·강남·신당보다 입지가 약합니다. 성북구 보문동과 붙어 있는
+      <b>맹그로브 신설</b>을 기준으로 16㎡ 환산해 <b>85만원</b>을 기본값으로 잡았습니다.
+      코리빙 요금에는 관리비·공과금·인터넷·주간청소가 포함되므로 운영비율도 40%로 올렸습니다.</p>
+      <p class="p"><b>단가를 올려도 수익률은 거의 그대로입니다.</b> 66만원/운영비 25%에서
+      85만원/운영비 40%로 바꿔도 중위 수익률은 3.65% → 3.64% 입니다.
+      코리빙은 비싸게 받는 만큼 손이 많이 가는 사업이라는 뜻입니다.</p>
     </div>
 
     <div class="sect">

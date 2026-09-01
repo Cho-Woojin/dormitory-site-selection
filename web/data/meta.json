@@ -60,10 +60,10 @@
     "demolition_cost_per_sqm": 100000,
     "net_area_ratio": 0.65,
     "room_area_sqm": 16.0,
-    "monthly_rent_per_room": 660000,
-    "deposit_per_room": 10000000,
+    "monthly_rent_per_room": 850000,
+    "deposit_per_room": 5000000,
     "vacancy_rate": 0.05,
-    "opex_ratio": 0.25,
+    "opex_ratio": 0.4,
     "min_rooms": 20,
     "grades": {
       "A": 250,
