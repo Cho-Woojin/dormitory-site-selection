@@ -739,41 +739,26 @@ function drawStart() {
 
 /* ── 부트 ──────────────────────────────────────────────── */
 async function boot() {
+  // 부팅 구간 계측. performance.mark 는 관측 부담이 없고,
+  // 느려졌을 때 어디가 느린지 추측하지 않게 해 준다.
+  const T = [];
+  let tPrev = performance.now();
+  const step = (name) => {
+    const now = performance.now();
+    T.push([name, Math.round(now - tPrev)]);
+    tPrev = now;
+  };
   const setBoot = (t) => { $("bootText").textContent = t; };
 
-  setBoot("설정을 읽는 중");
-  const [meta, scoring] = await Promise.all([
-    fetch("data/meta.json").then((r) => r.json()),
-    fetch("data/scoring.json").then((r) => r.json()),
-  ]);
-  state.meta = meta;
-  state.D = prepare(scoring, meta.scale);
-  state.idx = new Map(state.D.ids.map((v, i) => [v, i]));
-
-  // 기본값을 컨트롤에 주입 (params.yaml 이 단일 출처)
-  const d = meta.defaults;
-  $("tol1").value = d.tol_profitability_pct;
-  $("tol2").value = d.tol_solar_pct;
-  $("rent").value = Math.round(d.monthly_rent_per_room / 1e4);
-  $("deposit").value = Math.round(d.deposit_per_room / 1e4);
-  $("cc").value = Math.round(d.unit_construction_cost / 1e4);
-  $("mult").value = Math.round(d.land_price_multiplier * 100);
-  $("roomA").value = d.room_area_sqm;
-  $("minRooms").value = d.min_rooms;
-  for (const g of ["A", "B", "C", "D"]) $(`g${g}`).value = d.grades[g];
-
-  // 자치구 선택지는 meta.json 이 단일 출처
-  const sel = $("sggSel");
-  for (const dd of meta.districts || []) {
-    const o = document.createElement("option");
-    o.value = dd.code; o.textContent = dd.name;
-    sel.appendChild(o);
-  }
-  $("hdrSub").textContent =
-    `${(meta.districts || []).map((x) => x.name).join(" · ")} `
-    + `${(meta.parcel_count || 0).toLocaleString()} 필지`;
-  syncLabels();
-
+  setBoot("데이터를 불러오는 중");
+  // 네 파일을 한꺼번에 건다. 경계·역을 뒤로 미루면 그만큼 직렬로 늘어난다.
+  const pMeta = fetch("data/meta.json").then((r) => r.json());
+  const pScoring = fetch("data/scoring.json").then((r) => r.json());
+  const pBnd = fetch("data/boundary.geojson").then((r) => r.json());
+  const pStn = fetch("data/stations.geojson").then((r) => r.json());
+  // 지도 생성은 동기 WebGL 초기화라 메인 스레드를 길게 잡는다(콜드 1.5초).
+  // 데이터를 기다린 뒤에 하면 그 시간이 그대로 더해지므로, 페치를 걸어 둔
+  // 직후에 먼저 끝내 네트워크와 겹친다.
   setBoot("지도를 준비하는 중");
   const proto = new pmtiles.Protocol();
   maplibregl.addProtocol("pmtiles", proto.tile);
@@ -810,10 +795,51 @@ async function boot() {
   window.__renderAsm = renderAsm;
   window.__cacheGeom = cacheGeom;
   window.__selectParcel = selectParcel;   // 목록 밖 필지도 캡처·테스트에서 열 수 있게
+  // 스타일 파싱 완료 신호. 지도를 만든 직후에 걸어야 이벤트를 놓치지 않는다.
+  step("Map 생성자");
+  const styleReady = new Promise((res) => map.once("style.load", res));
   map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "bottom-left");
   map.addControl(new maplibregl.ScaleControl({ maxWidth: 96, unit: "metric" }), "bottom-left");
 
-  await new Promise((res) => map.on("load", res));
+  const [meta, scoring] = await Promise.all([pMeta, pScoring]);
+  step("데이터 대기");
+  state.meta = meta;
+  state.D = prepare(scoring, meta.scale);
+  state.idx = new Map(state.D.ids.map((v, i) => [v, i]));
+  step("표 준비");
+
+  // 기본값을 컨트롤에 주입 (params.yaml 이 단일 출처)
+  const d = meta.defaults;
+  $("tol1").value = d.tol_profitability_pct;
+  $("tol2").value = d.tol_solar_pct;
+  $("rent").value = Math.round(d.monthly_rent_per_room / 1e4);
+  $("deposit").value = Math.round(d.deposit_per_room / 1e4);
+  $("cc").value = Math.round(d.unit_construction_cost / 1e4);
+  $("mult").value = Math.round(d.land_price_multiplier * 100);
+  $("roomA").value = d.room_area_sqm;
+  $("minRooms").value = d.min_rooms;
+  for (const g of ["A", "B", "C", "D"]) $(`g${g}`).value = d.grades[g];
+
+  // 자치구 선택지는 meta.json 이 단일 출처
+  const sel = $("sggSel");
+  for (const dd of meta.districts || []) {
+    const o = document.createElement("option");
+    o.value = dd.code; o.textContent = dd.name;
+    sel.appendChild(o);
+  }
+  $("hdrSub").textContent =
+    `${(meta.districts || []).map((x) => x.name).join(" · ")} `
+    + `${(meta.parcel_count || 0).toLocaleString()} 필지`;
+  syncLabels();
+
+  step("컨트롤 초기화");
+
+  // map "load" 는 **첫 프레임이 타일까지 다 그려진 뒤**에 발생한다.
+  // 그걸 기다리면 OSM 래스터와 PMTiles 첫 타일이 올 때까지 화면이 잠긴다
+  // (콜드 캐시 실측 2.4초). 레이어를 붙이는 데 필요한 건 스타일 파싱뿐이다.
+  // isStyleLoaded() 는 소스 로딩까지 요구하므로 여기서는 쓸 수 없다.
+  await styleReady;
+  step("style.load 대기");
 
   // 색상: 순위가 높을수록 진하다.
   // pct 는 recompute() 에서 sqrt 변환해 넣는다. 선형이면 상위 10%가 램프의
@@ -878,11 +904,9 @@ async function boot() {
     paint: { "line-color": "#eb6834", "line-width": 2.8 },
   });
 
+  step("필지 레이어 추가");
   setBoot("경계와 역 정보를 불러오는 중");
-  const [bnd, stn] = await Promise.all([
-    fetch("data/boundary.geojson").then((r) => r.json()),
-    fetch("data/stations.geojson").then((r) => r.json()),
-  ]);
+  const [bnd, stn] = await Promise.all([pBnd, pStn]);
   // 자치구별 경계 bbox — 필터 시 지도 이동에 쓴다
   state.bndByCode = {};
   for (const f of bnd.features) {
@@ -959,10 +983,14 @@ async function boot() {
   $("legendRamp").style.background =
     `linear-gradient(90deg, ${RAMP.slice().reverse().join(",")})`;
 
+  step("경계·역");
   wireUI();
   const ms = recompute();
-  console.info(`[dss] 최초 계산 ${ms.toFixed(0)}ms · 후보 ${state.result.order.length}`);
+  step("최초 계산");
   $("boot").hidden = true;
+  window.__bootTiming = T;
+  console.info(`[dss] 부팅 ${Math.round(performance.now())}ms · 후보 ${state.result.order.length}\n`
+    + T.map(([k, v]) => `  ${String(v).padStart(6)}ms  ${k}`).join("\n"));
   map.on("idle", fillMissingGeom);
 
   // 상호작용

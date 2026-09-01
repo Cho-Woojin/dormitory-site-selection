@@ -62,6 +62,18 @@ ok("필지 레이어 존재", boot.layers.includes("parcel-fill"));
 // 역 이름은 심볼 레이어가 아니라 HTML 마커다 (글리프 의존 제거). 상세는 3d.
 ok("역 레이어 존재", boot.layers.includes("stn-dot"));
 ok("콘솔 에러 없음", pg.errors.length === 0, pg.errors.slice(0, 2).join(" | "));
+// 부팅 예산. "Map 생성자" 는 동기 WebGL 초기화라 하드웨어에 좌우된다
+// (실측: 실제 GPU ~150ms, 이 테스트의 SwiftShader 소프트웨어 렌더링 ~2초).
+// 환경 탓에 흔들리는 값으로 검증을 만들면 신호가 아니라 잡음이 되므로,
+// 우리가 통제하는 구간만 예산으로 묶는다.
+const bt = await pg.evaluate(() => window.__bootTiming || []);
+const btMap = Object.fromEntries(bt);
+const ours = bt.filter(([k]) => k !== "Map 생성자").reduce((a, [, v]) => a + v, 0);
+ok("우리 몫 부팅 600ms 이내", ours <= 600,
+  `${ours}ms  (${bt.map(([k, v]) => `${k} ${v}`).join(" · ")})`);
+// 여기가 커지면 map "load"(타일까지) 를 다시 기다리고 있다는 뜻이다
+ok("타일을 기다리지 않음", (btMap["style.load 대기"] ?? 0) <= 200,
+  `style 대기 ${btMap["style.load 대기"] ?? 0}ms`);
 
 // ── 2. Python 대조 (핵심) ────────────────────────────────
 globalThis.__sec = "2)";
