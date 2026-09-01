@@ -809,6 +809,7 @@ async function boot() {
   window.__asmToggle = asmToggle;   // 자동 테스트에서 합필 담기를 호출한다
   window.__renderAsm = renderAsm;
   window.__cacheGeom = cacheGeom;
+  window.__selectParcel = selectParcel;   // 목록 밖 필지도 캡처·테스트에서 열 수 있게
   map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "bottom-left");
   map.addControl(new maplibregl.ScaleControl({ maxWidth: 96, unit: "metric" }), "bottom-left");
 
