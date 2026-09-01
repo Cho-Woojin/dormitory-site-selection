@@ -132,6 +132,8 @@ header .spacer { flex: 1; }
           max-height: calc(100vh - var(--header-h) - 24px); }
 /* 상세 패널도 좌측 하단이라, 열리면 파라미터 높이를 줄여 겹치지 않게 한다. */
 body.has-detail #params { max-height: calc(100vh - var(--header-h) - 46vh - 36px); }
+/* 합필 패널도 좌측 하단이므로 파라미터 높이를 줄인다 */
+body.has-asm #params { max-height: calc(100vh - var(--header-h) - 62vh - 36px); }
 /* 하단 34px 는 지도 attribution 자리로 비워둔다. CC BY 4.0 표기가 가려지면 안 된다. */
 #list   { top: calc(var(--header-h) + 12px); right: 12px; width: 310px;
           max-height: calc(100vh - var(--header-h) - 46px); }
@@ -142,9 +144,37 @@ body.has-detail #params { max-height: calc(100vh - var(--header-h) - 46vh - 36px
 }
 .drawing #map { cursor: crosshair; }
 
-#asm {
-  top: calc(var(--header-h) + 12px); right: 334px; width: 320px;
+#hub {
+  top: calc(var(--header-h) + 12px); right: 334px; width: 344px;
   max-height: calc(100vh - var(--header-h) - 46px);
+}
+#hub[hidden] { display: none; }
+#hub .site {
+  display: grid; grid-template-columns: 22px 1fr auto auto; gap: 8px;
+  align-items: center; padding: 7px 4px; border-bottom: 1px solid var(--border);
+  font-size: 12px;
+}
+#hub .site:last-child { border-bottom: 0; }
+#hub .site .no {
+  width: 20px; height: 20px; border-radius: 999px; background: var(--accent);
+  color: var(--accent-ink); display: grid; place-items: center;
+  font-size: 11px; font-weight: 700;
+}
+#hub .site .nm { font-weight: 550; }
+#hub .site .meta { font-size: 11px; color: var(--ink-3); margin-top: 1px; }
+#hub .site .y { color: var(--accent-text); font-weight: 650; font-variant-numeric: tabular-nums; }
+#hub .site button { border: 0; background: transparent; color: var(--ink-3);
+  cursor: pointer; font-size: 13px; padding: 0 2px; }
+#hub .site button:hover { color: var(--ink); }
+#hub .tot {
+  margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border);
+}
+#hub .tot .big { font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+/* 합필은 좌측 하단(상세 패널 자리). 거점 패널과 자리를 나눈다.
+   합필 모드에서는 필지를 눌러도 상세가 아니라 담기가 되므로 충돌하지 않는다. */
+#asm {
+  bottom: 12px; left: 12px; width: 320px; max-height: 62vh;
 }
 #asm[hidden] { display: none; }
 #asm .pill {
@@ -353,6 +383,33 @@ select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 }
 .drawing #map { cursor: crosshair; }
 
+#hub {
+  top: calc(var(--header-h) + 12px); right: 334px; width: 344px;
+  max-height: calc(100vh - var(--header-h) - 46px);
+}
+#hub[hidden] { display: none; }
+#hub .site {
+  display: grid; grid-template-columns: 22px 1fr auto auto; gap: 8px;
+  align-items: center; padding: 7px 4px; border-bottom: 1px solid var(--border);
+  font-size: 12px;
+}
+#hub .site:last-child { border-bottom: 0; }
+#hub .site .no {
+  width: 20px; height: 20px; border-radius: 999px; background: var(--accent);
+  color: var(--accent-ink); display: grid; place-items: center;
+  font-size: 11px; font-weight: 700;
+}
+#hub .site .nm { font-weight: 550; }
+#hub .site .meta { font-size: 11px; color: var(--ink-3); margin-top: 1px; }
+#hub .site .y { color: var(--accent-text); font-weight: 650; font-variant-numeric: tabular-nums; }
+#hub .site button { border: 0; background: transparent; color: var(--ink-3);
+  cursor: pointer; font-size: 13px; padding: 0 2px; }
+#hub .site button:hover { color: var(--ink); }
+#hub .tot {
+  margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border);
+}
+#hub .tot .big { font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; }
+
 #asm { top: auto; bottom: 26px; left: 8px; right: 8px; width: auto; max-height: 52vh; z-index: 26; }
   body.has-detail #params { max-height: none; }
   body.has-detail #params .body { display: none; }
@@ -372,3 +429,15 @@ select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 /* 지도 attribution 은 라이선스 표기다. 패널 위로 올려 가려지지 않게 한다. */
 .maplibregl-ctrl-bottom-right { z-index: 22; }
 .maplibregl-ctrl-attrib.maplibregl-compact { margin: 0 8px 8px 0; }
+
+/* 거점 지도 핀. 축소 뷰에서 필지 폴리곤은 몇 픽셀이라 위치를 못 읽는다. */
+.hubpin {
+  width: 26px; height: 26px; border-radius: 50%;
+  background: #0a7d0a; color: #fff; border: 2.5px solid #fff;
+  font: 700 13px/1 inherit; cursor: pointer; padding: 0;
+  font-family: inherit;
+  box-shadow: 0 1px 4px rgb(0 0 0 / .35);
+  display: flex; align-items: center; justify-content: center;
+}
+.hubpin:hover { background: #0ca30c; }
+.hubpin:focus-visible { outline: 2px solid var(--accent-text); outline-offset: 2px; }

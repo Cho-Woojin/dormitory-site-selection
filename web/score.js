@@ -37,8 +37,8 @@ export const FLAG_REASONS = [
 export function prepare(scoring, scale) {
   const n = scoring.ids.length;
   const col = (k) => scoring.cols.indexOf(k);
-  const [ia, iff, ir, ip, id_, is, it, ix, itf, iri] =
-    ["a", "f", "r", "p", "d", "s", "t", "x", "tf", "ri"].map(col);
+  const [ia, iff, ir, ip, id_, is, it, ix, itf, iri, icx, icy, ilon, ilat] =
+    ["a", "f", "r", "p", "d", "s", "t", "x", "tf", "ri", "cx", "cy", "lon", "lat"].map(col);
 
   const out = {
     n,
@@ -49,6 +49,10 @@ export function prepare(scoring, scale) {
     adj: scoring.adj || [],
     tf: new Float64Array(n),
     ri: new Float64Array(n),
+    cx: new Float64Array(n),
+    cy: new Float64Array(n),
+    lon: new Float64Array(n),
+    lat: new Float64Array(n),
     area: new Float64Array(n),
     far: new Float64Array(n),
     rf: new Float64Array(n),
@@ -70,6 +74,10 @@ export function prepare(scoring, scale) {
     out.flags[i] = r[ix];
     out.tf[i] = itf >= 0 ? r[itf] / scale.tf : 1;
     out.ri[i] = iri >= 0 ? r[iri] / scale.ri : 1;   // 임대료 지역지수 (D-024)
+    out.cx[i] = icx >= 0 ? r[icx] : 0;              // 중심점 (EPSG:5186 미터)
+    out.cy[i] = icy >= 0 ? r[icy] : 0;
+    out.lon[i] = ilon >= 0 ? r[ilon] / 1e6 : 0;     // 같은 점의 WGS84 (지도 마커용)
+    out.lat[i] = ilat >= 0 ? r[ilat] / 1e6 : 0;
   }
   return out;
 }
@@ -361,4 +369,91 @@ export function connectivity(indices, adj) {
     groups.push(g);
   }
   return groups;
+}
+
+
+/* ───────────────────────────────────────────────────────────────────
+ * 거점 네트워크
+ *
+ * 단일 필지 최적화 결과를 그대로 거점 선정에 쓰면 안 된다.
+ * 상위 후보는 한 블록에 몰린다 (성동구 상위 30 중 21개가 100m 이내,
+ * 용답동 230번지 한 블록에만 9개). 카니발라이제이션·커버리지 0·리스크 집중.
+ * 최소 이격거리를 걸고 순위 상위부터 탐욕적으로 고른다.
+ * ─────────────────────────────────────────────────────────────────── */
+
+/** 사이트(거점) 하나의 대표 좌표. 합필이면 면적가중 중심. */
+export function siteCenter(indices, D) {
+  let sx = 0, sy = 0, sa = 0;
+  for (const i of indices) {
+    sx += D.cx[i] * D.area[i];
+    sy += D.cy[i] * D.area[i];
+    sa += D.area[i];
+  }
+  return sa ? [sx / sa, sy / sa] : [0, 0];
+}
+
+/**
+ * 최소 이격거리를 지키며 순위 상위부터 N개 거점 선정.
+ * @param order   계층 정렬 결과 (인덱스 배열)
+ * @param fixed   먼저 확정할 사이트들의 중심좌표 [[x,y],…] (저장한 합필 등)
+ */
+export function pickHubs(order, D, { n = 5, minDist = 1000, fixed = [] } = {}) {
+  const picked = [];
+  const centers = fixed.slice();
+  for (const i of order) {
+    if (picked.length + fixed.length >= n) break;
+    const x = D.cx[i], y = D.cy[i];
+    if (centers.some((c) => Math.hypot(x - c[0], y - c[1]) < minDist)) continue;
+    picked.push(i);
+    centers.push([x, y]);
+  }
+  return picked;
+}
+
+/** 사이트 집합의 최근접 거점 간 거리 (분산 정도를 보는 값). */
+export function minSpacing(centers) {
+  let m = Infinity;
+  for (let i = 0; i < centers.length; i++) {
+    for (let j = i + 1; j < centers.length; j++) {
+      m = Math.min(m, Math.hypot(centers[i][0] - centers[j][0],
+                                 centers[i][1] - centers[j][1]));
+    }
+  }
+  return centers.length < 2 ? null : m;
+}
+
+/**
+ * 합필 묶음이 단일 필지들 사이에서 몇 위에 해당하는가.
+ * 계층 정렬과 같은 키로 비교한다 (band1, band2, grade, S1).
+ * 합필 결과를 단일 필지와 나란히 놓고 보려면 이 값이 필요하다.
+ */
+export function virtualRank(s1, sun, grade, res, D, P) {
+  const cand = res.order;
+  if (!cand.length || !Number.isFinite(s1)) return null;
+  // 백분위: 후보 중 이 값보다 작은 것의 비율 (pandas rank(pct) 와 같은 정의)
+  let lt1 = 0, eq1 = 0, lt2 = 0, eq2 = 0;
+  for (const i of cand) {
+    if (res.s1[i] < s1) lt1++; else if (res.s1[i] === s1) eq1++;
+    if (D.sun[i] < sun) lt2++; else if (D.sun[i] === sun) eq2++;
+  }
+  const m = cand.length + 1;                       // 자신을 포함한 모수
+  const p1 = ((lt1 + (eq1 + 1 + 1) / 2) / m) * 100;
+  const p2 = ((lt2 + (eq2 + 1 + 1) / 2) / m) * 100;
+  const t1 = P.tol_profitability_pct, t2 = P.tol_solar_pct;
+  const b1 = t1 === 0 ? -p1 : Math.floor((100 - p1) / t1);
+  const b2 = t2 === 0 ? -p2 : Math.floor((100 - p2) / t2);
+
+  let before = 0;
+  for (const i of cand) {
+    const cb1 = t1 === 0 ? -res.p1[i] : Math.floor((100 - res.p1[i]) / t1);
+    if (cb1 < b1) { before++; continue; }
+    if (cb1 > b1) continue;
+    const cb2 = t2 === 0 ? -res.p2[i] : Math.floor((100 - res.p2[i]) / t2);
+    if (cb2 < b2) { before++; continue; }
+    if (cb2 > b2) continue;
+    if (res.grade[i] < grade) { before++; continue; }
+    if (res.grade[i] > grade) continue;
+    if (res.s1[i] > s1) before++;
+  }
+  return before + 1;
 }

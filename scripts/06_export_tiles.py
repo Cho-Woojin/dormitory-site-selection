@@ -108,6 +108,13 @@ def export_scoring_table(cfg):
     # rows 와 adj 의 정합성이 유지된다.
     g = g[(g["flags"] & static) == 0].reset_index(drop=True)
 
+    # 필지 중심점 (EPSG:5186 미터). 거점 선정은 필지 간 거리를 재야 하는데
+    # 타일 도형에 의존하면 화면 밖 필지를 못 쓴다. 좌표를 직접 싣는다.
+    cpt = g.geometry.representative_point()
+    # 지도 마커용 위경도. cx/cy 는 미터라 거리 계산에는 맞지만 지도에 못 찍는다.
+    # 1e6 배 정수로 실어 소수 오차 없이 왕복시킨다 (~0.1m 해상도).
+    wgs = gpd.GeoSeries(cpt, crs=g.crs).to_crs("EPSG:4326")
+
     # 지형계수 — 합필 시 실현계수를 다시 구하는 데 필요하다.
     # (합필 후 형상계수는 합필 폴리곤에서 새로 계산하고, 지형계수는 최대 필지 것을 쓴다)
     R = cfg["profitability"]["realization"]
@@ -124,6 +131,10 @@ def export_scoring_table(cfg):
         g["flags"].astype("int64"),
         (tf * 1000).round(0).astype("int64"),
         (g["rent_index"] * 10000).round(0).astype("int64"),
+        cpt.x.round(0).astype("int64"),
+        cpt.y.round(0).astype("int64"),
+        (wgs.x * 1000000).round(0).astype("int64"),
+        (wgs.y * 1000000).round(0).astype("int64"),
     ]).tolist()
 
     # 필지명·용도지역도 함께 싣는다. 타일에서 긁어오면 화면 밖 필지의 이름을
@@ -142,7 +153,7 @@ def export_scoring_table(cfg):
     print(f"  연접 쌍 {npairs:,}")
 
     payload = {
-        "cols": ["a", "f", "r", "p", "d", "s", "t", "x", "tf", "ri"],
+        "cols": ["a", "f", "r", "p", "d", "s", "t", "x", "tf", "ri", "cx", "cy", "lon", "lat"],
         "ids": g["pnu"].tolist(),
         "nm": (g["addr"].str.replace("서울특별시 ", "", regex=False)
                + " " + g["jibun"]).tolist(),
@@ -239,7 +250,7 @@ def export_aux(cfg):
             "tol_profitability_pct": R["tol_profitability_pct"],
             "tol_solar_pct": R["tol_solar_pct"],
         },
-        "scale": {"a": 100, "r": 100000, "p": 1, "d": 100, "s": 100000, "t": 100, "tf": 1000, "ri": 10000},
+        "scale": {"a": 100, "r": 100000, "p": 1, "d": 100, "s": 100000, "t": 100, "tf": 1000, "ri": 10000, "cx": 1, "cy": 1, "lon": 1000000, "lat": 1000000},
         "flag_bits": {
             "F_JIMOK": 1, "F_ZONE": 2, "F_LANDUSE": 4, "F_ROAD": 8,
             "F_ROOMS": 16, "F_PRICE": 32,
@@ -250,6 +261,10 @@ def export_aux(cfg):
             "enabled": bool(cfg["profitability"].get("use_rent_index", False)),
             "base_district": cfg["region"]["districts"][0]["code"],
             "note": "필지별 임대료 = monthly_rent_per_room × ri",
+        },
+        "hubs": {
+            "default_min_spacing_m": 1000,
+            "note": "거점 간 최소 이격. 상위 후보는 한 블록에 몰려 카니발라이제이션이 생긴다",
         },
         "assembly": {
             "district_plan_threshold_sqm": 3000,

@@ -2,7 +2,9 @@
 
 import {
   prepare, computeRanking, financials, exclusionReasons,
-  assemble, connectivity, ringIntersectsPolygon, FLAG, GRADE_LABELS,
+  assemble, connectivity, ringIntersectsPolygon,
+  pickHubs, minSpacing, siteCenter, virtualRank,
+  FLAG, GRADE_LABELS,
 } from "./score.js";
 
 /* MapLibre 는 `zoom` 을 최상위 interpolate/step 에서만 허용한다.
@@ -41,6 +43,7 @@ const state = {
   selected: null, map: null, painted: new Set(), zoneNames: null,
   asm: [], geomCache: new Map(),
   draw: { on: false, pts: [], poly: null, inArea: null },
+  sites: [],          // 거점. 단일 필지 또는 합필 묶음
 };
 
 /* ── 파라미터 읽기 ─────────────────────────────────────── */
@@ -74,6 +77,8 @@ function syncLabels() {
   $("multv").textContent = (+$("mult").value / 100).toFixed(2);
   $("roomAv").textContent = $("roomA").value;
   $("minRoomsv").textContent = $("minRooms").value;
+  $("hubNv").textContent = $("hubN").value;
+  $("hubDv").textContent = (+$("hubD").value).toLocaleString();
   for (const g of ["A", "B", "C", "D"]) $(`g${g}v`).textContent = $(`g${g}`).value;
 }
 
@@ -128,6 +133,7 @@ function recompute() {
   renderList(res, P);
   if (state.selected) renderDetail(state.selected);
   if (state.asm.length) renderAsm();
+  if (state.sites.length) renderHub();
   return performance.now() - t0;
 }
 
@@ -171,6 +177,10 @@ function renderDetail(id) {
   $("detailName").textContent = state.nameOf(id) || id;
   $("detail").hidden = false;
   document.body.classList.add("has-detail");
+  if (!$("asm").hidden && !$("asmMode").checked) {
+    $("asm").hidden = true;
+    document.body.classList.remove("has-asm");
+  }
 
   if (i === undefined) {
     // scoring.json 에 없다 = 정적 필터에서 이미 걸린 필지
@@ -207,7 +217,10 @@ function renderDetail(id) {
       ${why.map((w) => `<li>${w}</li>`).join("")}</ul></div>`;
   }
 
-  el.innerHTML = head + `
+  const canHub = res.isCand[i];
+  el.innerHTML = head + (canHub
+    ? `<div class="sect"><button class="btn" id="detailHub">이 필지를 거점으로 담기</button></div>`
+    : "") + `
     <div class="sect"><dl class="kv">
       <dt>용도지역</dt><dd>${zone}</dd>
       <dt>필지면적</dt><dd>${Math.round(D.area[i]).toLocaleString()}㎡</dd>
@@ -227,6 +240,12 @@ function renderDetail(id) {
       <dt>보증금</dt><dd>${won(f.deposit)}원</dd>
       <dt>연 NOI</dt><dd>${won(f.noi)}원</dd>
     </dl></div>`;
+
+  const hb = $("detailHub");
+  if (hb) hb.addEventListener("click", () => {
+    if (addSite([i])) hb.textContent = "거점에 담았습니다";
+    else hb.textContent = "이미 담긴 거점입니다";
+  });
 }
 
 function selectParcel(id, fly) {
@@ -309,6 +328,7 @@ function renderAsm() {
   $("asmCount").textContent = state.asm.length ? String(state.asm.length) : "";
   if (!state.asm.length) {
     $("asm").hidden = !$("asmMode").checked;
+    document.body.classList.toggle("has-asm", !$("asm").hidden);
     el.innerHTML = `<div class="empty">지도에서 필지를 눌러 담으세요.<br>
       규모 미달 필지도 담을 수 있습니다.</div>`;
     return;
@@ -386,6 +406,7 @@ function renderAsm() {
         <dt>최근접역</dt><dd>${Math.round(m.dist).toLocaleString()}m</dd>
       </dl>
     </div>
+    <div class="sect"><button class="btn" id="asmHub">이 합필을 거점으로 담기</button></div>
     ${conn}${plan}
     <div class="note">실 수·수익률은 타일 도형으로 계산합니다. 좌표가 격자에 스냅되어
       <b>실 수 기준 ±2%</b> 정도 오차가 있을 수 있습니다.${m.exact ? "" :
@@ -393,6 +414,185 @@ function renderAsm() {
 
   el.querySelectorAll("[data-rm]").forEach((b) =>
     b.addEventListener("click", () => asmToggle(b.dataset.rm)));
+  const ab = $("asmHub");
+  if (ab) ab.addEventListener("click", () => {
+    // 합필 도형을 함께 저장한다. 나중에 화면 밖으로 나가도 실현계수가 정확하다.
+    const ok = addSite(state.asm, hull);
+    ab.textContent = ok ? "거점에 담았습니다" : "이미 담긴 거점입니다";
+  });
+}
+
+/* ── 거점 네트워크 ───────────────────────────────────────
+ * 거점 = 단일 필지 또는 합필 묶음.
+ * 단일 필지 최적화 결과를 그대로 쓰면 한 블록에 몰리므로 최소 이격을 건다.
+ * ───────────────────────────────────────────────────── */
+
+let siteSeq = 0;
+
+/** 사이트 하나의 지표. 합필이면 assemble(), 단일이면 financials(). */
+function siteMetrics(site) {
+  const D = state.D, P = state.P, res = state.result;
+  if (site.indices.length === 1) {
+    const i = site.indices[0];
+    const f = financials(D.area[i], D.far[i], D.rf[i], D.price[i], D.demo[i], P, D.ri[i]);
+    return {
+      rooms: f.rooms, s1: f.s1, cost: f.total, area: D.area[i],
+      sun: D.sun[i], dist: D.dist[i], grade: res.grade[i],
+      rank: res.rankOf[i] || null, virtual: false,
+    };
+  }
+  const items = site.indices.map((i) => ({
+    area: D.area[i], far: D.far[i], tf: D.tf[i], rf: D.rf[i],
+    price: D.price[i], demo: D.demo[i], sun: D.sun[i], dist: D.dist[i],
+    ri: D.ri[i], zone: state.zoneOf(D.ids[i]),
+  }));
+  const hull = site.hull || null;
+  const m = assemble(items, hull, P, state.meta.assembly);
+  const grade = gradeFromDist(m.dist, P.grades);
+  return {
+    rooms: m.rooms, s1: m.s1, cost: m.total, area: m.area,
+    sun: m.sun, dist: m.dist, grade,
+    // 합필은 후보 목록에 없다. 단일 필지들 사이에서 몇 위에 해당하는지 계산한다.
+    rank: virtualRank(m.s1, m.sun, grade, res, D, P), virtual: true,
+    zones: items.map((x) => x.zone),
+  };
+}
+
+function gradeFromDist(d, g) {
+  return d <= g.A ? 0 : d <= g.B ? 1 : d <= g.C ? 2 : d <= g.D ? 3 : 4;
+}
+
+function addSite(indices, hull) {
+  const key = indices.slice().sort((a, b) => a - b).join(",");
+  if (state.sites.some((s) => s.key === key)) return false;
+  state.sites.push({ id: ++siteSeq, key, indices: indices.slice(), hull: hull || null });
+  renderHub();
+  paintHubs();
+  return true;
+}
+
+function removeSite(id) {
+  state.hubTried = false;
+  state.sites = state.sites.filter((s) => s.id !== id);
+  renderHub();
+  paintHubs();
+}
+
+function paintHubs() {
+  const ids = state.sites.flatMap((s) => s.indices.map((i) => state.D.ids[i]));
+  for (const l of ["parcel-hub", "parcel-hub-line"]) {
+    state.map.setFilter(l, ["in", ["get", "id"], ["literal", ids]]);
+  }
+  // 거점 번호 핀. 자치구 전체 축척에서 필지 폴리곤은 몇 픽셀이라 보이지 않는다.
+  // 심볼 레이어는 basemap 글리프 폰트스택에 없는 이름을 쓰면 pbf 파싱이 깨지면서
+  // 같은 렌더 패스의 원 레이어까지 사라진다(실제로 발생). HTML 마커는 폰트 의존이 없다.
+  const D = state.D;
+  for (const m of state.hubPins || []) m.remove();
+  state.hubPins = state.sites.map((s, k) => {
+    // 핀 좌표는 WGS84 가 필요하다. cx/cy 는 EPSG:5186 이므로 면적가중 lon/lat 로 따로 낸다.
+    let x = 0, y = 0, a = 0;
+    for (const i of s.indices) { x += D.lon[i] * D.area[i]; y += D.lat[i] * D.area[i]; a += D.area[i]; }
+    const el = document.createElement("button");
+    el.className = "hubpin";
+    el.textContent = String(k + 1);
+    el.title = s._nm || "";
+    el.addEventListener("click", (e) => {
+      e.stopPropagation();
+      document.getElementById(`site-${s.id}`)?.scrollIntoView({ block: "nearest" });
+    });
+    return new maplibregl.Marker({ element: el })
+      .setLngLat([x / a, y / a]).addTo(state.map);
+  });
+}
+
+function hubAuto() {
+  const P = state.P, D = state.D;
+  const n = +$("hubN").value;
+  const minD = +$("hubD").value;
+  // 이미 담은 거점(합필 포함)은 유지하고 나머지를 채운다
+  const fixed = state.sites.map((s) => siteCenter(s.indices, D));
+  const used = new Set(state.sites.flatMap((s) => s.indices));
+  const order = state.result.order.filter((i) => !used.has(i));
+  const picked = pickHubs(order, D, { n, minDist: minD, fixed });
+  for (const i of picked) addSite([i]);
+  state.hubTried = true;
+  if (!state.sites.length) return;
+  renderHub();
+}
+
+function renderHub() {
+  const el = $("hubBody");
+  $("hubCount").textContent = state.sites.length ? String(state.sites.length) : "";
+  if (!state.sites.length) {
+    $("hub").hidden = true;
+    return;
+  }
+  $("hub").hidden = false;
+  const D = state.D;
+
+  const rows = state.sites.map((s, k) => {
+    const m = siteMetrics(s);
+    s._m = m;
+    const nm = s.indices.length === 1
+      ? (state.nameOf(D.ids[s.indices[0]]) || D.ids[s.indices[0]])
+      : `${state.nameOf(D.ids[s.indices[0]]) || ""} 외 ${s.indices.length - 1}필지 합필`;
+    s._nm = nm;                     // 지도 핀 툴팁이 같은 이름을 쓴다
+    const rk = m.rank
+      ? `${m.rank.toLocaleString()}위${m.virtual ? " 상당" : ""}`
+      : "순위 밖";
+    return `<div class="site" id="site-${s.id}">
+      <span class="no">${k + 1}</span>
+      <div><div class="nm"></div><div class="meta num">${Math.round(m.area).toLocaleString()}㎡ ·
+        ${m.rooms}실 · ${GRADE_LABELS[m.grade]}등급 ${Math.round(m.dist).toLocaleString()}m · ${rk}</div></div>
+      <span class="y">${(m.s1 * 100).toFixed(2)}%</span>
+      <button data-site="${s.id}" aria-label="빼기">✕</button>
+    </div>`;
+  }).join("");
+
+  const rooms = state.sites.reduce((a, s) => a + s._m.rooms, 0);
+  const cost = state.sites.reduce((a, s) => a + s._m.cost, 0);
+  const wS1 = state.sites.reduce((a, s) => a + s._m.s1 * s._m.cost, 0) / (cost || 1);
+  const centers = state.sites.map((s) => siteCenter(s.indices, D));
+  const spacing = minSpacing(centers);
+  const dongs = new Set(state.sites.map((s) =>
+    (state.nameOf(D.ids[s.indices[0]]) || "").split(" ").slice(0, 2).join(" ")));
+
+  const spacingNote = spacing === null ? ""
+    : spacing < 500
+      ? `<div class="note warn">거점이 <b>${Math.round(spacing).toLocaleString()}m</b> 밖에
+         안 떨어져 있습니다. 같은 수요를 나눠 먹고 커버리지도 겹칩니다.
+         최소 이격거리를 올려 다시 선정해 보세요.</div>`
+      : `<div class="note">최근접 거점 간 <b>${Math.round(spacing).toLocaleString()}m</b>.
+         ${dongs.size}개 지역에 분산돼 있습니다.</div>`;
+
+  // 이격을 크게 잡으면 요청한 수를 못 채운다. 조용히 적게 주지 않고 이유를 말한다.
+  const want = +$("hubN").value, got = state.sites.length;
+  const shortNote = state.hubTried && got < want
+    ? `<div class="note warn">이격 <b>${(+$("hubD").value).toLocaleString()}m</b> 조건으로는
+       ${want}곳을 채울 수 없어 <b>${got}곳</b>만 선정했습니다.
+       이격을 줄이거나 거점 수를 낮추세요.</div>`
+    : "";
+
+  el.innerHTML = rows + shortNote + `
+    <div class="tot">
+      <div class="big">${rooms.toLocaleString()}실 · ${(cost / 1e8).toFixed(0)}억</div>
+      <dl class="kv" style="margin-top:7px">
+        <dt>거점 수</dt><dd>${state.sites.length}곳
+          (합필 ${state.sites.filter((s) => s.indices.length > 1).length})</dd>
+        <dt>가중 평균 수익률</dt><dd><b>${(wS1 * 100).toFixed(2)}%</b></dd>
+        <dt>실당 사업비</dt><dd>${won(cost / Math.max(rooms, 1))}원</dd>
+      </dl>
+    </div>${spacingNote}`;
+
+  el.querySelectorAll(".site").forEach((row, k) => {
+    const s = state.sites[k];
+    row.querySelector(".nm").textContent = s.indices.length === 1
+      ? (state.nameOf(D.ids[s.indices[0]]) || D.ids[s.indices[0]])
+      : `${state.nameOf(D.ids[s.indices[0]]) || ""} 외 ${s.indices.length - 1}필지 합필`;
+    s._nm = row.querySelector(".nm").textContent;   // 지도 핀 툴팁이 같은 이름을 쓴다
+  });
+  el.querySelectorAll("[data-site]").forEach((b) =>
+    b.addEventListener("click", () => removeSite(+b.dataset.site)));
 }
 
 /* ── 범위 그리기 ─────────────────────────────────────────
@@ -620,6 +820,16 @@ async function boot() {
   });
   // 선택 강조는 두 겹으로. 흰 케이싱이 없으면 짙은 필지 위에서 선이 묻힌다.
   map.addLayer({
+    id: "parcel-hub", type: "fill", source: "parcels", "source-layer": "parcels",
+    filter: ["in", ["get", "id"], ["literal", []]],
+    paint: { "fill-color": "#0ca30c", "fill-opacity": 0.45 },
+  });
+  map.addLayer({
+    id: "parcel-hub-line", type: "line", source: "parcels", "source-layer": "parcels",
+    filter: ["in", ["get", "id"], ["literal", []]],
+    paint: { "line-color": "#0a7d0a", "line-width": 2 },
+  });
+  map.addLayer({
     id: "parcel-asm", type: "fill", source: "parcels", "source-layer": "parcels",
     filter: ["in", ["get", "id"], ["literal", []]],
     paint: { "fill-color": "#eb6834", "fill-opacity": 0.42 },
@@ -812,6 +1022,8 @@ function wireUI() {
     for (const g of ["A", "B", "C", "D"]) $(`g${g}`).value = d.grades[g];
     $("exSub").checked = false;
     $("sggSel").value = "0";
+    $("hubN").value = 5;
+    $("hubD").value = state.meta.hubs?.default_min_spacing_m ?? 1000;
     syncLabels();
     if (state.draw.poly || state.draw.on) drawCancel();
     else recompute();
@@ -824,6 +1036,15 @@ function wireUI() {
   $("aboutBtn").addEventListener("click", () => aboutOpen($("about").hidden));
   $("aboutClose").addEventListener("click", () => aboutOpen(false));
 
+  for (const id of ["hubN", "hubD"]) $(id).addEventListener("input", syncLabels);
+  $("hubAuto").addEventListener("click", hubAuto);
+  $("hubClear").addEventListener("click", () => {
+    state.sites = [];
+    paintHubs();
+    renderHub();
+  });
+  $("hubClose").addEventListener("click", () => { $("hub").hidden = true; });
+
   $("drawBtn").addEventListener("click", () => {
     if (state.draw.on) drawFinish();
     else drawStart();
@@ -835,7 +1056,10 @@ function wireUI() {
       state.asm = [];
       paintAsm();
       $("asm").hidden = true;
+      document.body.classList.remove("has-asm");
     } else {
+      // 합필 모드에서는 상세 패널을 닫는다 (같은 자리)
+      if (!$("detail").hidden) $("detailClose").click();
       renderAsm();
     }
   });
@@ -849,6 +1073,7 @@ function wireUI() {
     state.asm = [];
     paintAsm();
     $("asm").hidden = true;
+    document.body.classList.remove("has-asm");
   });
 
   $("detailClose").addEventListener("click", () => {

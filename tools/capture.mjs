@@ -117,5 +117,41 @@ await shot("10-dark-mode", { center: JR_S, zoom: 16.0, theme: "dark" });
 // 11 모바일
 await shot("11-mobile", { w: 414, h: 896, center: JR, zoom: 15.6 });
 
+// 17 거점 네트워크 (성동구). 합필 1곳을 고정하고 이격 1,500m 로 자동 보완한다.
+await shot("17-hub", {
+  w: 1600, h: 1000, zoom: 12.2, settle: 1200,
+  setup: async (pg) => {
+    await pg.selectOption("#sggSel", "11200");
+    await pg.waitForTimeout(900);
+    await pg.evaluate(() => {
+      const s = window.__state;
+      document.getElementById("asmMode").checked = true;
+      document.getElementById("asmMode").dispatchEvent(new Event("change", { bubbles: true }));
+      const i = s.D.names.findIndex((n) => n === "성동구 성수동2가 299-19");
+      s.asm = [i, ...(s.D.adj[i] || []).slice(0, 4)];
+      window.__renderAsm();
+      document.getElementById("asmHub").click();
+      document.getElementById("asmClose").click();
+      const d = document.getElementById("hubD");
+      d.value = "1500"; d.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await pg.waitForTimeout(400);
+    await pg.click("#hubAuto");
+    await pg.waitForTimeout(1500);
+    // 거점 5개가 전부 패널 사이 가시영역에 들어오도록 맞춘다
+    await pg.evaluate(() => {
+      const s = window.__state, D = s.D;
+      const pts = s.sites.map((x) => {
+        let lo = 0, la = 0, a = 0;
+        for (const i of x.indices) { lo += D.lon[i] * D.area[i]; la += D.lat[i] * D.area[i]; a += D.area[i]; }
+        return [lo / a, la / a];
+      });
+      const b = pts.reduce((acc, p) => acc.extend(p), new maplibregl.LngLatBounds(pts[0], pts[0]));
+      window.__map.fitBounds(b, { padding: { top: 110, bottom: 130, left: 400, right: 700 }, duration: 0 });
+    });
+    await pg.waitForTimeout(2500);
+  },
+});
+
 await browser.close();
 console.log("완료");

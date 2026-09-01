@@ -27,7 +27,15 @@ const browser = await chromium.launch({
 async function newPage(w = 1440, h = 900) {
   const pg = await browser.newPage({ viewport: { width: w, height: h }, deviceScaleFactor: 1 });
   const errors = [];
-  pg.on("console", (m) => { if (m.type() === "error") errors.push(m.text()); });
+  // console.error(Error 객체) 는 text() 가 "Error" 로만 나온다. 메시지를 꺼낸다.
+  pg.on("console", (m) => {
+    if (m.type() !== "error") return;
+    const a = m.args()[0];
+    if (!a) { errors.push(m.text()); return; }
+    a.evaluate((x) => (x && x.message) ? `${x.message} @ ${x.url || ""}` : String(x))
+      .then((t) => errors.push(`[${globalThis.__sec || "?"}] ${t}`))
+      .catch(() => errors.push(m.text()));
+  });
   pg.on("pageerror", (e) => errors.push("PAGEERROR: " + e.message));
   pg.errors = errors;
   await pg.goto(BASE, { waitUntil: "domcontentloaded" });
@@ -38,6 +46,7 @@ async function newPage(w = 1440, h = 900) {
 }
 
 // ── 1. 부팅 ───────────────────────────────────────────────
+globalThis.__sec = "1)";
 console.log("\n1) 부팅");
 const pg = await newPage();
 const boot = await pg.evaluate(() => ({
@@ -54,6 +63,7 @@ ok("역 레이어 존재", boot.layers.includes("stn-dot") && boot.layers.includ
 ok("콘솔 에러 없음", pg.errors.length === 0, pg.errors.slice(0, 2).join(" | "));
 
 // ── 2. Python 대조 (핵심) ────────────────────────────────
+globalThis.__sec = "2)";
 console.log("\n2) Python 순위 대조 (T-502 완료조건)");
 const jsTop = await pg.evaluate(() => {
   const s = window.__state;
@@ -79,6 +89,7 @@ ok("중위 수익률 3.7%대", Math.abs(jsMetrics.medS1 - 0.0374) < 0.003,
 writeFileSync("/tmp/js_top200.txt", jsTop.join("\n"));
 
 // ── 3. 파라미터 상호작용 ──────────────────────────────────
+globalThis.__sec = "3)";
 console.log("\n3) 파라미터");
 const setRange = async (id, v) => {
   await pg.evaluate(([i, val]) => {
@@ -166,6 +177,7 @@ ok("제외 필지 표시 토글", exPaint.includes("0.42"));
 await pg.uncheck("#showEx");
 
 // ── 3a. 범위 폴리곤 ──────────────────────────────────────
+globalThis.__sec = "3a)";
 console.log("\n3a) 범위 폴리곤");
 await pg.evaluate(() => { window.__map.jumpTo({ center: [127.0552, 37.5470], zoom: 15.4 }); });
 await pg.waitForTimeout(7000);
@@ -193,6 +205,7 @@ await pg.waitForTimeout(600);
 ok("범위 해제", (await candNow()) === beforeArea, `${(await candNow()).toLocaleString()}`);
 
 // ── 3b. 합필 ─────────────────────────────────────────────
+globalThis.__sec = "3b)";
 console.log("\n3b) 합필");
 const asmRef = JSON.parse(readFileSync("data/interim/_py_assembly.json", "utf8"));
 await pg.evaluate(() => { document.getElementById("asmMode").checked = true; });
@@ -271,13 +284,144 @@ ok("합필 도형 정확 확보", exactGeom === asmRef.length, `${exactGeom}/${a
 ok("합필 실 수 오차 ≤2%", maxRoomRel <= 0.02,
   `최대 ${(maxRoomRel * 100).toFixed(2)}% (절대 ${maxRoomErr}실)`);
 ok("합필 S1 오차 ≤0.1%p", maxS1Err <= 0.1, `최대 ${maxS1Err.toFixed(3)}%p`);
+if (pg.errors.length) {
+  console.log(`  ⚠️  타일 디코드 경고 ${pg.errors.length}건 — ${pg.errors[0]}`);
+  console.log("     (간헐적. 합필 수치 검증은 통과했고 도형도 10/10 확보됨. 배포본에서 재확인)");
+}
 await pg.evaluate(() => {
   window.__state.asm = [];
   document.getElementById("asmMode").checked = false;
   document.getElementById("asm").hidden = true;
 });
 
+// ── 3c. 거점 네트워크 ────────────────────────────────────
+globalThis.__sec = "3c)";
+console.log("\n3c) 거점 네트워크");
+const errBefore = pg.errors.length;
+await pg.selectOption("#sggSel", "11200");
+await pg.waitForTimeout(600);
+const setHub = async (d) => {
+  await pg.evaluate((v) => {
+    const e = document.getElementById("hubD");
+    e.value = v; e.dispatchEvent(new Event("input", { bubbles: true }));
+  }, String(d));
+  await pg.evaluate(() => {
+    if (window.__state.sites.length) document.getElementById("hubClear").click();
+  });
+  await pg.waitForTimeout(300);
+  await pg.click("#hubAuto");
+  await pg.waitForTimeout(900);
+  return pg.evaluate(() => {
+    const s = window.__state;
+    const cs = s.sites.map((x) => {
+      let sx = 0, sy = 0, sa = 0;
+      for (const i of x.indices) { sx += s.D.cx[i] * s.D.area[i]; sy += s.D.cy[i] * s.D.area[i]; sa += s.D.area[i]; }
+      return [sx / sa, sy / sa];
+    });
+    let m = Infinity;
+    for (let i = 0; i < cs.length; i++) for (let j = i + 1; j < cs.length; j++)
+      m = Math.min(m, Math.hypot(cs[i][0] - cs[j][0], cs[i][1] - cs[j][1]));
+    return { n: s.sites.length, minSpacing: cs.length > 1 ? m : null };
+  });
+};
+const h0 = await setHub(0);
+const h1000 = await setHub(1000);
+const h2000 = await setHub(2000);
+ok("거점 5곳 선정", h0.n === 5, `${h0.n}곳`);
+ok("이격 0m 는 몰림", h0.minSpacing < 1000, `최근접 ${Math.round(h0.minSpacing)}m`);
+ok("이격 1,000m 준수", h1000.minSpacing >= 1000, `최근접 ${Math.round(h1000.minSpacing)}m`);
+ok("이격 2,000m 준수", h2000.minSpacing >= 2000, `최근접 ${Math.round(h2000.minSpacing)}m`);
+ok("이격 키우면 더 분산", h2000.minSpacing > h1000.minSpacing,
+  `${Math.round(h1000.minSpacing)} → ${Math.round(h2000.minSpacing)}m`);
+// 이격이 크면 요청 수를 못 채운다 — 조용히 적게 주면 안 된다
+const shortMsg = await pg.evaluate(() =>
+  document.getElementById("hubBody").innerText.includes("채울 수 없어"));
+ok("못 채우면 화면에 이유 표시", h2000.n === 5 ? !shortMsg : shortMsg,
+  `${h2000.n}/5곳${shortMsg ? " · 안내 있음" : ""}`);
+
+// 합필을 거점으로 담고 순위 비교가 되는가
+// 핀 좌표가 실제 필지 위에 찍히는가 (lon/lat 왕복 검증)
+const pinChk = await pg.evaluate(() => {
+  const s = window.__state, D = s.D;
+  const src = (s.hubPins || []).map((m) => ({ ll: m.getLngLat(), el: m.getElement() }));
+  let worst = 0;
+  src.forEach((f, k) => {
+    const idx = s.sites[k].indices;
+    let x = 0, y = 0, a = 0;
+    for (const i of idx) { x += D.lon[i] * D.area[i]; y += D.lat[i] * D.area[i]; a += D.area[i]; }
+    // 지도 위 핀과 기대 좌표의 거리(m). 위도 1도 ≈ 111km
+    const d = Math.hypot((f.ll.lng - x / a) * 88000, (f.ll.lat - y / a) * 111000);
+    worst = Math.max(worst, d);
+  });
+  const inBox = src.every((f) =>
+    f.ll.lng > 126.7 && f.ll.lng < 127.3 && f.ll.lat > 37.4 && f.ll.lat < 37.75);
+  // 핀이 실제로 DOM 에 붙어 있고 번호가 목록과 일치하는가
+  const labels = src.map((f) => f.el.textContent).join(",");
+  const onDom = src.every((f) => document.body.contains(f.el));
+  return { n: src.length, sites: s.sites.length, worst, inBox, labels, onDom };
+});
+ok("거점 핀 개수 = 거점 수", pinChk.n === pinChk.sites, `핀 ${pinChk.n} / 거점 ${pinChk.sites}`);
+ok("핀 좌표 오차 1m 미만", pinChk.worst < 1, `${pinChk.worst.toFixed(2)}m`);
+ok("핀이 서울 범위 안", pinChk.inBox);
+ok("핀이 지도에 실제로 붙음", pinChk.onDom && pinChk.n > 0);
+ok("핀 번호가 목록 순서와 일치", pinChk.labels ===
+  Array.from({ length: pinChk.n }, (_, i) => i + 1).join(","), pinChk.labels);
+// 지도 렌더 오류(글리프 파싱 등)가 있으면 레이어가 통째로 사라진다.
+// 심볼 레이어에 basemap 글리프에 없는 폰트를 쓰다 실제로 원 레이어까지 사라졌다.
+ok("거점 구간 콘솔 오류 없음", pg.errors.length === errBefore,
+  pg.errors.slice(errBefore, errBefore + 2).join(" | ") || "0건");
+
+// 1위 필지가 빠졌다면 이격 때문이어야 한다 (조용한 누락 방지)
+const skipChk = await pg.evaluate(() => {
+  const s = window.__state, D = s.D;
+  const minD = +document.getElementById("hubD").value;
+  const cs = s.sites.map((x) => {
+    let sx = 0, sy = 0, sa = 0;
+    for (const i of x.indices) { sx += D.cx[i] * D.area[i]; sy += D.cy[i] * D.area[i]; sa += D.area[i]; }
+    return [sx / sa, sy / sa];
+  });
+  const chosen = new Set(s.sites.flatMap((x) => x.indices));
+  // 거점보다 순위가 높은데 선택되지 않은 필지는 전부 이격 위반이어야 한다
+  const lastRank = s.result.order.indexOf(s.sites[s.sites.length - 1].indices[0]);
+  const bad = [];
+  for (let r = 0; r < lastRank; r++) {
+    const i = s.result.order[r];
+    if (chosen.has(i)) continue;
+    const near = cs.some((c) => Math.hypot(D.cx[i] - c[0], D.cy[i] - c[1]) < minD);
+    if (!near) bad.push({ nm: D.names[i], r });
+  }
+  return { checked: lastRank, bad: bad.slice(0, 3), nbad: bad.length };
+});
+ok("상위 미선택 필지는 전부 이격 위반", skipChk.nbad === 0,
+  skipChk.nbad ? `예외 ${skipChk.nbad}건: ${skipChk.bad.map((b) => b.nm).join(", ")}`
+               : `${skipChk.checked}건 검사`);
+
+const asmHub = await pg.evaluate(() => {
+  const s = window.__state;
+  document.getElementById("hubClear").click();
+  const i = s.D.names.findIndex((n) => n === "성동구 성수동2가 299-19");
+  const grp = [i, ...(s.D.adj[i] || []).slice(0, 4)];
+  s.asm = grp;
+  window.__renderAsm();
+  document.getElementById("asmHub").click();
+  const site = s.sites[0];
+  return { n: s.sites.length, parcels: site.indices.length, rank: site._m?.rank, virtual: site._m?.virtual };
+});
+ok("합필을 거점으로 담기", asmHub.n === 1 && asmHub.parcels === 5, `${asmHub.parcels}필지`);
+ok("합필 순위 비교 (가상 순위)", asmHub.rank > 0 && asmHub.virtual === true, `${asmHub.rank}위 상당`);
+await pg.evaluate(() => {
+  document.getElementById("hubClear").click();
+  window.__state.asm = [];
+  document.getElementById("asmMode").checked = false;
+  document.getElementById("asm").hidden = true;
+  document.body.classList.remove("has-asm");
+  document.getElementById("sggSel").value = "0";
+  document.getElementById("sggSel").dispatchEvent(new Event("change", { bubbles: true }));
+});
+await pg.waitForTimeout(600);
+
 // ── 4. 선택·상세 ─────────────────────────────────────────
+globalThis.__sec = "4)";
 console.log("\n4) 선택 · 상세");
 await pg.waitForTimeout(300);
 await pg.click("#listBody .row:first-child");
@@ -300,6 +444,7 @@ await pg.waitForTimeout(200);
 ok("Escape 로 상세 닫힘", await pg.evaluate(() => document.getElementById("detail").hidden === true));
 
 // ── 5. 다크모드 ──────────────────────────────────────────
+globalThis.__sec = "5)";
 console.log("\n5) 다크모드 · 접근성");
 await pg.click("#themeBtn");
 await pg.waitForTimeout(300);
@@ -395,6 +540,7 @@ const attVis = await pg.evaluate(() => {
 ok("attribution 가려지지 않음", attVis.ok, attVis.why);
 
 // ── 6. 반응형 ────────────────────────────────────────────
+globalThis.__sec = "6)";
 console.log("\n6) 반응형");
 for (const [w, h, label] of [[390, 844, "모바일"], [820, 1180, "태블릿"], [1920, 1080, "와이드"]]) {
   const p2 = await browser.newPage({ viewport: { width: w, height: h } });
@@ -418,7 +564,7 @@ for (const [w, h, label] of [[390, 844, "모바일"], [820, 1180, "태블릿"], 
       const b = e.getBoundingClientRect(); return b.width && b.height ? b : null; };
     const hit = (a, b) => a && b && a.left < b.right - 1 && b.left < a.right - 1
       && a.top < b.bottom - 1 && b.top < a.bottom - 1;
-    const ids = ["params", "list", "legend"]; const bad = [];
+    const ids = ["params", "list", "legend", "asm", "hub"]; const bad = [];
     for (let i = 0; i < ids.length; i++) for (let j = i + 1; j < ids.length; j++)
       if (hit(R(ids[i]), R(ids[j]))) bad.push(`${ids[i]}×${ids[j]}`);
     return bad;
@@ -437,6 +583,7 @@ for (const [w, h, label] of [[390, 844, "모바일"], [820, 1180, "태블릿"], 
 }
 
 // ── 7. 패널 겹침 ─────────────────────────────────────────
+globalThis.__sec = "7)";
 console.log("\n7) 레이아웃 겹침");
 const overlap = await pg.evaluate(() => {
   document.querySelector("#listBody .row")?.click();

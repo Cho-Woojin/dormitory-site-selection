@@ -82,7 +82,11 @@
     "s": 100000,
     "t": 100,
     "tf": 1000,
-    "ri": 10000
+    "ri": 10000,
+    "cx": 1,
+    "cy": 1,
+    "lon": 1000000,
+    "lat": 1000000
   },
   "flag_bits": {
     "F_JIMOK": 1,
@@ -100,6 +104,10 @@
     "enabled": true,
     "base_district": "11290",
     "note": "필지별 임대료 = monthly_rent_per_room × ri"
+  },
+  "hubs": {
+    "default_min_spacing_m": 1000,
+    "note": "거점 간 최소 이격. 상위 후보는 한 블록에 몰려 카니발라이제이션이 생긴다"
   },
   "assembly": {
     "district_plan_threshold_sqm": 3000,
