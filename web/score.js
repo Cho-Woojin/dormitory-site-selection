@@ -37,8 +37,8 @@ export const FLAG_REASONS = [
 export function prepare(scoring, scale) {
   const n = scoring.ids.length;
   const col = (k) => scoring.cols.indexOf(k);
-  const [ia, iff, ir, ip, id_, is, it, ix, itf, iri, icx, icy, ilon, ilat] =
-    ["a", "f", "r", "p", "d", "s", "t", "x", "tf", "ri", "cx", "cy", "lon", "lat"].map(col);
+  const [ia, iff, ir, ip, id_, is, it, ix, itf, iri, icx, icy, ilon, ilat, ipd] =
+    ["a", "f", "r", "p", "d", "s", "t", "x", "tf", "ri", "cx", "cy", "lon", "lat", "pd"].map(col);
 
   const out = {
     n,
@@ -53,6 +53,8 @@ export function prepare(scoring, scale) {
     cy: new Float64Array(n),
     lon: new Float64Array(n),
     lat: new Float64Array(n),
+    priceDate: new Int8Array(n),                 // price_dates 인덱스
+    priceDates: scoring.price_dates || [],
     area: new Float64Array(n),
     far: new Float64Array(n),
     rf: new Float64Array(n),
@@ -78,6 +80,7 @@ export function prepare(scoring, scale) {
     out.cy[i] = icy >= 0 ? r[icy] : 0;
     out.lon[i] = ilon >= 0 ? r[ilon] / 1e6 : 0;     // 같은 점의 WGS84 (지도 마커용)
     out.lat[i] = ilat >= 0 ? r[ilat] / 1e6 : 0;
+    out.priceDate[i] = ipd >= 0 ? r[ipd] : -1;  // 공시일자 (필지마다 다를 수 있다)
   }
   return out;
 }

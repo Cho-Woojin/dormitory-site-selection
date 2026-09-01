@@ -269,8 +269,15 @@ ok("합필 연접 판정", connOk.every(Boolean), `${connOk.filter(Boolean).leng
 // 허용 오차를 명시적으로 둔다 (실측: 최대 1실 / 0.049%p).
 let maxRoomErr = 0, maxRoomRel = 0, maxS1Err = 0, exactGeom = 0;
 for (const cse of asmRef) {
-  await pg.evaluate(([lon, lat]) => { window.__map.jumpTo({ center: [lon, lat], zoom: 17.6 }); },
-    [cse.lon, cse.lat]);
+  // 고정 줌이면 큰 묶음이 화면 밖으로 잘려 도형을 못 읽는다. 범위에 맞춘다.
+  await pg.evaluate((c) => {
+    if (c.bbox) {
+      window.__map.fitBounds([[c.bbox[0], c.bbox[1]], [c.bbox[2], c.bbox[3]]],
+        { padding: 80, maxZoom: 18, duration: 0 });
+    } else {
+      window.__map.jumpTo({ center: [c.lon, c.lat], zoom: 17.6 });
+    }
+  }, cse);
   await pg.waitForTimeout(3500);
   const r = await pg.evaluate((pnus) => {
     const s = window.__state;
@@ -475,6 +482,54 @@ ok("확대 시 역 이름 표시", lbl.near.length > 0, lbl.near.slice(0, 3).joi
 ok("성수 일대 역 이름 표시", lbl.seongsu.length > 0, lbl.seongsu.slice(0, 3).join(", ") || "없음");
 ok("줌 13.2 미만에서는 숨김", lbl.far === 0, `${lbl.far}개`);
 ok("라벨 겹침 없음", lbl.overlap === 0, `겹침 ${lbl.overlap}쌍`);
+
+// ── 3e. 개별공시지가 표시 ────────────────────────────────
+globalThis.__sec = "3e)";
+console.log("\n3e) 개별공시지가");
+const priceRef = JSON.parse(readFileSync("data/interim/_py_price.json", "utf8"));
+const pr = await pg.evaluate(async (ref) => {
+  const s = window.__state, D = s.D;
+  const read = async (pnu) => {
+    const i = s.idx.get(pnu);
+    if (i === undefined) return { missing: true };
+    window.__selectParcel(D.ids[i], false);
+    await new Promise((r) => setTimeout(r, 260));
+    return { text: document.getElementById("detailBody").innerText, i };
+  };
+  const out = [];
+  for (const r of ref.rows) out.push({ ref: r, got: await read(r.pnu) });
+  const gone = await read(ref.missing_pnu[0]);
+  return { out, gone, dates: [...new Set([...D.priceDate].map((k) => D.priceDates[k]))] };
+}, priceRef);
+
+// 표시된 값이 Python 과 같은가. 화면 문자열에서 직접 읽는다 —
+// 내부 배열만 비교하면 "계산은 맞는데 화면에 안 나오는" 경우를 못 잡는다.
+const fmtWon = (v) => v >= 1e8 ? `${(v / 1e8).toFixed(1)}억`
+  : v >= 1e4 ? `${Math.round(v / 1e4).toLocaleString("en-US")}만`
+  : String(Math.round(v));
+let badUnit = 0, badTotal = 0, badDate = 0, shown = 0;
+for (const { ref, got } of pr.out) {
+  if (!got.text) continue;
+  shown++;
+  if (!got.text.includes(`${fmtWon(ref.price)}원`)) { badUnit++; continue; }
+  if (!got.text.includes(fmtWon(ref.total))) badTotal++;
+  if (!got.text.includes(ref.date)) badDate++;
+}
+ok("공시지가 필지 표본", shown === priceRef.rows.length, `${shown}/${priceRef.rows.length}`);
+ok("단가가 Python 과 일치", badUnit === 0, `불일치 ${badUnit}`);
+ok("공시총액이 Python 과 일치", badTotal === 0, `불일치 ${badTotal}`);
+ok("공시일자가 Python 과 일치", badDate === 0, `불일치 ${badDate}`);
+// 날짜는 필지마다 다르다. 한 값만 나오면 필지별 표시가 아니라 상수를 찍는 것이다.
+ok("공시일자가 필지별로 다름", pr.dates.filter(Boolean).length >= 2,
+  pr.dates.filter(Boolean).join(", "));
+ok("자료 없는 필지는 목록 밖", pr.gone.missing === true,
+  `공시지가 0 필지 ${priceRef.missing_count}건`);
+// 출처 표기가 하드코딩이면 데이터가 바뀌어도 따라오지 않는다
+const srcTxt = await pg.evaluate(() => document.getElementById("srcPrice")?.textContent || "");
+ok("출처 표기가 실제 공시일자를 담음",
+  Object.keys(priceRef.dates).every((d) => srcTxt.includes(d)), srcTxt);
+await pg.evaluate(() => document.getElementById("detailClose")?.click());
+await pg.waitForTimeout(300);
 
 // ── 4. 선택·상세 ─────────────────────────────────────────
 globalThis.__sec = "4)";

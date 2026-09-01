@@ -390,6 +390,10 @@ python3 scripts/07_verify_tiles.py
 node tools/verify_ui.mjs
 ```
 
+정답지는 `python3 scripts/10_verify_refs.py` 로 생성합니다.
+파이프라인을 다시 돌렸으면 정답지도 다시 만들어야 합니다 —
+데이터보다 오래된 정답지는 통과하면서 아무것도 지키지 못합니다.
+
 `07_verify_tiles.py`
 
 - 최대줌에 전 필지 79,282개 보존
@@ -410,6 +414,8 @@ node tools/verify_ui.mjs
   **거점 구간 콘솔 오류 0건**
 - **역 라벨**: 심볼 레이어 0개 / 글리프 URL 없음(외부 폰트 의존 차단),
   확대 시 표시·축소 시 숨김·겹침 0쌍
+- **개별공시지가**: 단가·공시총액·공시일자가 Python 과 일치, 공시일자가
+  필지별로 다른지, 출처 표기가 실제 데이터를 담는지
 - **부팅 예산**: 우리 몫 600ms 이내, 타일 대기 0ms
   (커지면 `map.on("load")` 를 다시 기다린다는 뜻 — [D-030](docs/DECISIONS.md))
 - 선택·상세 패널, 다크모드, WCAG AA 대비, em-dash 부재

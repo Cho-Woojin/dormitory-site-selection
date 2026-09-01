@@ -102,6 +102,7 @@ def main():
     print(f"  대상 구 레코드  : {len(lp):,}   공시일자: {lp['공시일자'].mode()[0]}")
 
     joined = g["pnu"].map(lp["공시지가"])
+    joined_date = g["pnu"].map(lp["공시일자"].astype(str))
     rate = joined.notna().mean()
     print(f"  조인율          : {rate:.1%}  ({joined.notna().sum():,}/{len(g):,})")
     if rate < 0.90:
@@ -116,7 +117,19 @@ def main():
     # 갱신본을 채택하되 결측이면 A25 유지. 어느 쪽을 썼는지 기록한다.
     g["price_source"] = np.where(joined.notna(), "AL_D151_20260526", "AL_D194_A25")
     g["price_krw_sqm"] = joined.fillna(g["price_krw_sqm"])
+    # 값을 갈아끼웠으면 기준일도 같이 따라가야 한다. 값은 AL_D151 인데
+    # 날짜는 AL_D194 의 데이터기준일자를 그대로 두면 둘이 어긋난다
+    # (DATA_SOURCES: "둘의 기준일이 다르므로 어느 쪽을 썼는지 기록할 것").
+    g["price_ref_date"] = joined_date.fillna(g["price_ref_date"].astype(str))
     print(f"  최종 공시지가 결측/0: {(g['price_krw_sqm'].isna() | g['price_krw_sqm'].eq(0)).sum():,}")
+    print(f"  공시일자 분포    : {dict(g['price_ref_date'].value_counts())}")
+    # 공시일자는 필지마다 다를 수 있다 (분할·합병 시 수시공시).
+    # 검사할 불변식은 "값의 출처와 날짜의 출처가 같은가" 이다.
+    valid = set(lp["공시일자"].astype(str))
+    from_d151 = g["price_source"].eq("AL_D151_20260526")
+    bad = int((from_d151 & ~g["price_ref_date"].isin(valid)).sum())
+    assert bad == 0, f"AL_D151 가격인데 날짜가 그 파일에 없는 행 {bad:,}"
+    print(f"  값·날짜 출처 일치 : {int(from_d151.sum()):,}행 ✅")
 
     # ── 저장 ────────────────────────────────────────────────────────────
     INTERIM.mkdir(parents=True, exist_ok=True)

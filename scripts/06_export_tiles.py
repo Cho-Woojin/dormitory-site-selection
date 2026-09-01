@@ -120,6 +120,11 @@ def export_scoring_table(cfg):
     R = cfg["profitability"]["realization"]
     tf = g["terrain"].map(R["slope_factor"]).fillna(R["slope_factor"]["지정되지않음"])
 
+    # 공시일자. 분할·합병 필지는 수시공시라 날짜가 다르다(실측 3종).
+    # 문자열을 4만 번 싣지 않고 테이블 + 인덱스로 넣는다.
+    price_dates = sorted(g["price_ref_date"].astype(str).unique())
+    pd_idx = g["price_ref_date"].astype(str).map({v: i for i, v in enumerate(price_dates)})
+
     rows = np.column_stack([
         (g["area_sqm"] * 100).round(0).astype("int64"),
         g["far_pct"].fillna(0).astype("int64"),
@@ -135,6 +140,7 @@ def export_scoring_table(cfg):
         cpt.y.round(0).astype("int64"),
         (wgs.x * 1000000).round(0).astype("int64"),
         (wgs.y * 1000000).round(0).astype("int64"),
+        pd_idx.astype("int64"),
     ]).tolist()
 
     # 필지명·용도지역도 함께 싣는다. 타일에서 긁어오면 화면 밖 필지의 이름을
@@ -153,7 +159,8 @@ def export_scoring_table(cfg):
     print(f"  연접 쌍 {npairs:,}")
 
     payload = {
-        "cols": ["a", "f", "r", "p", "d", "s", "t", "x", "tf", "ri", "cx", "cy", "lon", "lat"],
+        "cols": ["a", "f", "r", "p", "d", "s", "t", "x", "tf", "ri", "cx", "cy", "lon", "lat", "pd"],
+        "price_dates": price_dates,     # pd 열이 가리키는 공시일자
         "ids": g["pnu"].tolist(),
         "nm": (g["addr"].str.replace("서울특별시 ", "", regex=False)
                + " " + g["jibun"]).tolist(),
@@ -221,6 +228,15 @@ def export_aux(cfg):
     gu[["sgg_nm", "geometry"]].to_file(WEB_DATA / "boundary.geojson", driver="GeoJSON")
     print(f"  boundary.geojson  {(WEB_DATA / 'boundary.geojson').stat().st_size / 1e3:.0f}KB")
 
+    # 기준연도는 손으로 적지 않는다. 손으로 적은 값은 데이터가 바뀌어도
+    # 따라오지 않는다 (실제로 공시지가 출처가 AL_D151 로 바뀐 뒤에도
+    # AL_D194 날짜가 그대로 남아 있었다).
+    gp = gpd.read_file(INTERIM / "parcels_ranked.gpkg", layer="parcels",
+                       columns=["price_ref_date", "price_source"], ignore_geometry=True)
+    valid = gp[gp["price_source"].eq("AL_D151_20260526")]
+    dates = valid["price_ref_date"].astype(str).value_counts()
+    price_vintage = " / ".join(f"{d} {n:,}필지" for d, n in dates.items())
+
     # 웹이 점수를 재계산하려면 파라미터 기본값과 코드표가 필요하다
     P, F, S, T, R = (cfg["profitability"], cfg["filters"], cfg["solar"],
                      cfg["transit"], cfg["ranking"])
@@ -250,7 +266,7 @@ def export_aux(cfg):
             "tol_profitability_pct": R["tol_profitability_pct"],
             "tol_solar_pct": R["tol_solar_pct"],
         },
-        "scale": {"a": 100, "r": 100000, "p": 1, "d": 100, "s": 100000, "t": 100, "tf": 1000, "ri": 10000, "cx": 1, "cy": 1, "lon": 1000000, "lat": 1000000},
+        "scale": {"a": 100, "r": 100000, "p": 1, "d": 100, "s": 100000, "t": 100, "tf": 1000, "ri": 10000, "cx": 1, "cy": 1, "lon": 1000000, "lat": 1000000, "pd": 1},
         "flag_bits": {
             "F_JIMOK": 1, "F_ZONE": 2, "F_LANDUSE": 4, "F_ROAD": 8,
             "F_ROOMS": 16, "F_PRICE": 32,
@@ -274,7 +290,8 @@ def export_aux(cfg):
             "realization_base": cfg["profitability"]["realization"]["base"],
         },
         "data_vintage": {
-            "필지·공시지가": "2026-05-13 (AL_D194) / 공시일자 2026-04-30",
+            "필지": "2026-05-13 (AL_D194 토지특성정보)",
+            "개별공시지가": f"AL_D151 · 공시일자 {price_vintage}",
             "건물": "2026-08-09 (AL_D010)",
             "조례": "서울시 도시계획조례 시행 2026-07-13",
         },

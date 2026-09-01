@@ -38,6 +38,23 @@ const won = (v) =>
   : v >= 1e4 ? `${Math.round(v / 1e4).toLocaleString()}만`
   : Math.round(v).toLocaleString();
 
+/* 개별공시지가 행. 단가만 있으면 "이 땅이 얼마인지" 를 읽을 수 없어
+   총액을 함께 낸다. 공시일자는 분할·합병 필지가 수시공시를 받아
+   필지마다 다르므로 전역 표기가 아니라 필지별로 표시한다. */
+function priceRows(i) {
+  const D = state.D;
+  const p = D.price[i];
+  if (!(p > 0)) {
+    return `<dt>개별공시지가</dt><dd style="color:var(--ink-3)">자료 없음</dd>`;
+  }
+  const total = p * D.area[i];
+  const k = D.priceDate[i];
+  const date = k >= 0 ? (D.priceDates[k] || "") : "";
+  return `<dt>개별공시지가</dt><dd><b>${won(p)}원</b>/㎡</dd>
+    <dt>필지 공시총액</dt><dd>${won(total)}원</dd>`
+    + (date ? `<dt>공시일자</dt><dd style="color:var(--ink-2)">${date}</dd>` : "");
+}
+
 const state = {
   meta: null, D: null, idx: null, result: null,
   selected: null, map: null, painted: new Set(), zoneNames: null,
@@ -207,6 +224,7 @@ function renderDetail(id) {
       <dt>수익률</dt><dd><b>${(res.s1[i] * 100).toFixed(2)}%</b></dd>
       <dt>일조 개방도</dt><dd>${D.sun[i].toFixed(3)}</dd>
       <dt>역세권</dt><dd>${GRADE_LABELS[res.grade[i]]}등급 · ${Math.round(D.dist[i]).toLocaleString()}m</dd>
+      ${priceRows(i)}
       </dl>${tags.join("")}</div>`;
   } else {
     const why = exclusionReasons(D.flags[i], f.rooms, P.min_rooms);
@@ -214,7 +232,8 @@ function renderDetail(id) {
     if (subEx) why.push("다세대(구분소유) 제외 설정");
     head = `<div class="sect"><span class="tag warn">후보 제외</span>
       <ul style="margin:7px 0 0;padding-left:17px;color:var(--ink-2);font-size:12px">
-      ${why.map((w) => `<li>${w}</li>`).join("")}</ul></div>`;
+      ${why.map((w) => `<li>${w}</li>`).join("")}</ul>
+      <dl class="kv" style="margin-top:9px">${priceRows(i)}</dl></div>`;
   }
 
   const canHub = res.isCand[i];
@@ -232,8 +251,8 @@ function renderDetail(id) {
     <div class="sect"><dl class="kv">
       <dt>적용 임대료</dt><dd>${Math.round(f.rent / 1e4).toLocaleString()}만원/월
         <span style="color:var(--ink-3)">(지수 ${D.ri[i].toFixed(2)})</span></dd>
-      <dt>공시지가</dt><dd>${won(D.price[i])}원/㎡</dd>
-      <dt>토지비</dt><dd>${won(f.land)}원</dd>
+      <dt>토지비</dt><dd>${won(f.land)}원
+        <span style="color:var(--ink-3)">(공시지가 × ${P.land_price_multiplier.toFixed(2)})</span></dd>
       <dt>공사비</dt><dd>${won(f.build)}원</dd>
       <dt>철거비</dt><dd>${f.demoCost > 0 ? won(f.demoCost) + "원" : "없음"}</dd>
       <dt>총사업비</dt><dd><b>${won(f.total)}원</b></dd>
@@ -827,6 +846,10 @@ async function boot() {
     o.value = dd.code; o.textContent = dd.name;
     sel.appendChild(o);
   }
+  // 공시일자는 손으로 적지 않는다. 분할·합병 필지가 수시공시를 받아
+  // 날짜가 여러 개이고, 손으로 적은 값은 데이터가 바뀌어도 따라오지 않는다.
+  const pv = (meta.data_vintage || {})["개별공시지가"];
+  if (pv) $("srcPrice").textContent = `국토교통부 · ${pv}`;
   $("hdrSub").textContent =
     `${(meta.districts || []).map((x) => x.name).join(" · ")} `
     + `${(meta.parcel_count || 0).toLocaleString()} 필지`;
