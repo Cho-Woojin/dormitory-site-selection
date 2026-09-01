@@ -388,7 +388,7 @@ function renderAsm() {
     </div>
     ${conn}${plan}
     <div class="note">실 수·수익률은 타일 도형으로 계산합니다. 좌표가 격자에 스냅되어
-      <b>±1실</b> 정도 오차가 있을 수 있습니다.${m.exact ? "" :
+      <b>실 수 기준 ±2%</b> 정도 오차가 있을 수 있습니다.${m.exact ? "" :
       " 지금은 필지 도형을 못 읽어 <b>근사값</b>입니다. 해당 필지가 화면에 보이면 정확해집니다."}</div>`;
 
   el.querySelectorAll("[data-rm]").forEach((b) =>
