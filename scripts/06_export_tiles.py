@@ -84,6 +84,49 @@ def export_parcels(cfg):
     return path
 
 
+def export_scoring_table(cfg):
+    """브라우저가 전역 순위를 계산하려면 후보 전체의 raw 값이 필요하다.
+
+    벡터타일은 화면에 보이는 타일만 로드되므로 백분위 밴드(전역 순위)를
+    타일만으로는 계산할 수 없다. 별도의 경량 표를 함께 싣는다.
+
+    주의: 후보 판정 F5(최소 실 수)는 파라미터에 의존하므로 동적이다.
+    따라서 **F5를 뺀 나머지 필터를 통과한 필지 전부**를 담아야
+    min_rooms 슬라이더가 올바르게 동작한다.
+    """
+    from common import F_JIMOK, F_LANDUSE, F_PRICE, F_ROAD, F_ZONE
+
+    g = gpd.read_file(INTERIM / "parcels_ranked.gpkg", layer="parcels")
+    static = F_JIMOK | F_ZONE | F_LANDUSE | F_ROAD | F_PRICE
+    g = g[(g["flags"] & static) == 0].copy()
+
+    rows = np.column_stack([
+        (g["area_sqm"] * 100).round(0).astype("int64"),
+        g["far_pct"].fillna(0).astype("int64"),
+        (g["realization"] * 100000).round(0).astype("int64"),
+        g["price_krw_sqm"].fillna(0).round(0).astype("int64"),
+        (g["demo_gfa_sqm"] * 100).round(0).astype("int64"),
+        (g["sun"] * 100000).round(0).astype("int64"),
+        (g["stn_dist_m"] * 100).round(0).astype("int64"),
+        g["flags"].astype("int64"),
+    ]).tolist()
+
+    # 필지명·용도지역도 함께 싣는다. 타일에서 긁어오면 화면 밖 필지의 이름을
+    # 못 찾아 리스트에 PNU 가 그대로 노출된다(실제로 발생한 버그).
+    payload = {
+        "cols": ["a", "f", "r", "p", "d", "s", "t", "x"],
+        "ids": g["pnu"].str[5:].tolist(),
+        "nm": (g["addr"].str.replace("서울특별시 성북구 ", "", regex=False)
+               + " " + g["jibun"]).tolist(),
+        "z": g["zone1"].map(ZONE_CODES).fillna(0).astype(int).tolist(),
+        "rows": rows,
+    }
+    path = WEB_DATA / "scoring.json"
+    path.write_text(json.dumps(payload, separators=(",", ":")), encoding="utf-8")
+    print(f"  scoring.json      {len(g):,}행  "
+          f"{path.stat().st_size / 1e6:.2f}MB (F5 제외 필터 통과분)")
+
+
 def build_tiles(cfg, geojson):
     """T-402 — tippecanoe 로 PMTiles 생성."""
     if not shutil.which("tippecanoe"):
@@ -187,6 +230,7 @@ def main():
 
     print("\n" + "═" * 62)
     print("T-403  부가 레이어")
+    export_scoring_table(cfg)
     export_aux(cfg)
     print("\n✅ 완료")
 

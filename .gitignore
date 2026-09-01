@@ -29,3 +29,9 @@ node_modules/
 .DS_Store
 .vscode/
 .idea/
+
+# 검증 도구 임시 산출물
+tools/_*.mjs
+web/_*.html
+node_modules/
+package-lock.json
