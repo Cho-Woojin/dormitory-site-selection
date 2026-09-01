@@ -80,7 +80,8 @@
     "p": 1,
     "d": 100,
     "s": 100000,
-    "t": 100
+    "t": 100,
+    "tf": 1000
   },
   "flag_bits": {
     "F_JIMOK": 1,
@@ -93,6 +94,17 @@
     "W_ZONE2": 512,
     "W_SUBDIVIDED": 1024,
     "W_INDUSTRIAL": 2048
+  },
+  "assembly": {
+    "district_plan_threshold_sqm": 3000,
+    "industrial_zones": [
+      "준공업지역",
+      "전용공업지역",
+      "일반공업지역"
+    ],
+    "shape_factor_base": 0.7,
+    "shape_factor_span": 0.32,
+    "realization_base": 0.9
   },
   "data_vintage": {
     "필지·공시지가": "2026-05-13 (AL_D194) / 공시일자 2026-04-30",

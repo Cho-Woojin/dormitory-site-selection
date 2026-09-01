@@ -102,7 +102,14 @@ def export_scoring_table(cfg):
 
     g = gpd.read_file(INTERIM / "parcels_ranked.gpkg", layer="parcels")
     static = F_JIMOK | F_ZONE | F_LANDUSE | F_ROAD | F_PRICE
-    g = g[(g["flags"] & static) == 0].copy()
+    # 인덱스를 리셋해야 한다. sjoin 이 돌려주는 인덱스가 곧 배열 위치여야
+    # rows 와 adj 의 정합성이 유지된다.
+    g = g[(g["flags"] & static) == 0].reset_index(drop=True)
+
+    # 지형계수 — 합필 시 실현계수를 다시 구하는 데 필요하다.
+    # (합필 후 형상계수는 합필 폴리곤에서 새로 계산하고, 지형계수는 최대 필지 것을 쓴다)
+    R = cfg["profitability"]["realization"]
+    tf = g["terrain"].map(R["slope_factor"]).fillna(R["slope_factor"]["지정되지않음"])
 
     rows = np.column_stack([
         (g["area_sqm"] * 100).round(0).astype("int64"),
@@ -113,23 +120,40 @@ def export_scoring_table(cfg):
         (g["sun"] * 100000).round(0).astype("int64"),
         (g["stn_dist_m"] * 100).round(0).astype("int64"),
         g["flags"].astype("int64"),
+        (tf * 1000).round(0).astype("int64"),
     ]).tolist()
 
     # 필지명·용도지역도 함께 싣는다. 타일에서 긁어오면 화면 밖 필지의 이름을
     # 못 찾아 리스트에 PNU 가 그대로 노출된다(실제로 발생한 버그).
+    print("  연접 관계 계산 중…")
+    sj = gpd.sjoin(g[["geometry"]], g[["geometry"]], predicate="touches", how="inner")
+    adjacency = [[] for _ in range(len(g))]
+    npairs = 0
+    for a, b in zip(sj.index, sj["index_right"]):
+        a, b = int(a), int(b)
+        if a < b:
+            adjacency[a].append(b)
+            adjacency[b].append(a)
+            npairs += 1
+    assert max((max(v) for v in adjacency if v), default=-1) < len(g), "인접 인덱스 범위 초과"
+    print(f"  연접 쌍 {npairs:,}")
+
     payload = {
-        "cols": ["a", "f", "r", "p", "d", "s", "t", "x"],
+        "cols": ["a", "f", "r", "p", "d", "s", "t", "x", "tf"],
         "ids": g["pnu"].tolist(),
         "nm": (g["addr"].str.replace("서울특별시 ", "", regex=False)
                + " " + g["jibun"]).tolist(),
         "z": g["zone1"].map(ZONE_CODES).fillna(0).astype(int).tolist(),
         "g": g["sgg_cd"].astype(int).tolist(),
         "rows": rows,
+        # 연접(맞닿음) 관계. 합필은 연접이 법적 요건이라 도로로 갈린 필지는 여기서 빠진다.
+        # rows 와 같은 인덱스를 쓰므로 정합성이 구조적으로 보장된다.
+        "adj": adjacency,
     }
     path = WEB_DATA / "scoring.json"
     path.write_text(json.dumps(payload, separators=(",", ":")), encoding="utf-8")
     print(f"  scoring.json      {len(g):,}행  "
-          f"{path.stat().st_size / 1e6:.2f}MB (F5 제외 필터 통과분)")
+          f"{path.stat().st_size / 1e6:.2f}MB (F5 제외 필터 통과분 + 연접관계)")
 
 
 def build_tiles(cfg, geojson):
@@ -212,12 +236,19 @@ def export_aux(cfg):
             "tol_profitability_pct": R["tol_profitability_pct"],
             "tol_solar_pct": R["tol_solar_pct"],
         },
-        "scale": {"a": 100, "r": 100000, "p": 1, "d": 100, "s": 100000, "t": 100},
+        "scale": {"a": 100, "r": 100000, "p": 1, "d": 100, "s": 100000, "t": 100, "tf": 1000},
         "flag_bits": {
             "F_JIMOK": 1, "F_ZONE": 2, "F_LANDUSE": 4, "F_ROAD": 8,
             "F_ROOMS": 16, "F_PRICE": 32,
             "W_ROAD_UNKNOWN": 256, "W_ZONE2": 512, "W_SUBDIVIDED": 1024,
             "W_INDUSTRIAL": 2048,
+        },
+        "assembly": {
+            "district_plan_threshold_sqm": 3000,
+            "industrial_zones": ["준공업지역", "전용공업지역", "일반공업지역"],
+            "shape_factor_base": 0.70,
+            "shape_factor_span": 0.32,
+            "realization_base": cfg["profitability"]["realization"]["base"],
         },
         "data_vintage": {
             "필지·공시지가": "2026-05-13 (AL_D194) / 공시일자 2026-04-30",

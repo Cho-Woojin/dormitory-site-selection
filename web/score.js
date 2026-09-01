@@ -37,8 +37,8 @@ export const FLAG_REASONS = [
 export function prepare(scoring, scale) {
   const n = scoring.ids.length;
   const col = (k) => scoring.cols.indexOf(k);
-  const [ia, iff, ir, ip, id_, is, it, ix] =
-    ["a", "f", "r", "p", "d", "s", "t", "x"].map(col);
+  const [ia, iff, ir, ip, id_, is, it, ix, itf] =
+    ["a", "f", "r", "p", "d", "s", "t", "x", "tf"].map(col);
 
   const out = {
     n,
@@ -46,6 +46,8 @@ export function prepare(scoring, scale) {
     names: scoring.nm,
     zones: scoring.z,
     sgg: scoring.g,
+    adj: scoring.adj || [],
+    tf: new Float64Array(n),
     area: new Float64Array(n),
     far: new Float64Array(n),
     rf: new Float64Array(n),
@@ -65,6 +67,7 @@ export function prepare(scoring, scale) {
     out.sun[i] = r[is] / scale.s;
     out.dist[i] = r[it] / scale.t;
     out.flags[i] = r[ix];
+    out.tf[i] = itf >= 0 ? r[itf] / scale.tf : 1;
   }
   return out;
 }
@@ -183,4 +186,134 @@ export function exclusionReasons(flags, rooms, minRooms) {
     } else if (flags & bit) out.push(label);
   }
   return out;
+}
+
+/* ───────────────────────────────────────────────────────────────────
+ * 합필 (인접 필지 통합)
+ *
+ * scripts/08_assembly.py 와 같은 식을 쓴다. 어긋나면 웹이 틀린 규모를 보여준다.
+ *   면적       = Σ 개별 면적
+ *   용적률     = 면적가중 평균
+ *   형상계수   = clip(0.70 + 0.32 × 면적/MRR면적, 0.70, 1.00)
+ *   지형계수   = 최대 필지의 것
+ *   실현계수   = base × 형상계수 × 지형계수
+ * ─────────────────────────────────────────────────────────────────── */
+
+/** 볼록껍질 (Andrew monotone chain). 입력 [[x,y],…] */
+export function convexHull(pts) {
+  if (pts.length < 3) return pts.slice();
+  const p = pts.slice().sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  const cross = (o, a, b) =>
+    (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+  const build = (src) => {
+    const h = [];
+    for (const q of src) {
+      while (h.length >= 2 && cross(h[h.length - 2], h[h.length - 1], q) <= 0) h.pop();
+      h.push(q);
+    }
+    h.pop();
+    return h;
+  };
+  return build(p).concat(build(p.reverse()));
+}
+
+/**
+ * 최소회전외접사각형의 면적 (회전 캘리퍼스).
+ * shapely 의 minimum_rotated_rectangle 과 같은 값을 준다.
+ * MRR(폴리곤) = MRR(볼록껍질) 이므로 껍질만 있으면 된다.
+ */
+export function minRotatedRectArea(pts) {
+  const h = convexHull(pts);
+  if (h.length < 3) return 0;
+  let best = Infinity;
+  for (let i = 0; i < h.length; i++) {
+    const j = (i + 1) % h.length;
+    const dx = h[j][0] - h[i][0];
+    const dy = h[j][1] - h[i][1];
+    const len = Math.hypot(dx, dy);
+    if (len < 1e-9) continue;
+    const ux = dx / len, uy = dy / len;
+    let m1 = Infinity, M1 = -Infinity, m2 = Infinity, M2 = -Infinity;
+    for (const q of h) {
+      const a = q[0] * ux + q[1] * uy;      // 변 방향 투영
+      const b = -q[0] * uy + q[1] * ux;     // 수직 방향 투영
+      if (a < m1) m1 = a; if (a > M1) M1 = a;
+      if (b < m2) m2 = b; if (b > M2) M2 = b;
+    }
+    const area = (M1 - m1) * (M2 - m2);
+    if (area < best) best = area;
+  }
+  return best === Infinity ? 0 : best;
+}
+
+/**
+ * 합필 지표.
+ * @param items  [{area, far, tf, price, demo, sun, dist, flags, zoneCode}]
+ * @param hullPts  합필 폴리곤 꼭짓점 (미터 좌표). 없으면 형상계수를 면적가중으로 근사.
+ */
+export function assemble(items, hullPts, P, A) {
+  const area = items.reduce((s, x) => s + x.area, 0);
+  if (!area) return null;
+  const far = items.reduce((s, x) => s + x.far * x.area, 0) / area;
+  // 지형계수는 최대 필지의 것 (08_assembly.py 와 동일)
+  const biggest = items.reduce((m, x) => (x.area > m.area ? x : m), items[0]);
+
+  let shapeF, exact = false;
+  if (hullPts && hullPts.length >= 3) {
+    const mrr = minRotatedRectArea(hullPts);
+    if (mrr > 0) {
+      shapeF = Math.min(1.0, Math.max(0.70,
+        A.shape_factor_base + A.shape_factor_span * Math.min(1, area / mrr)));
+      exact = true;
+    }
+  }
+  if (!exact) {
+    // 도형을 못 얻은 경우: 개별 실현계수의 면적가중 평균에서 형상계수를 역산
+    const rfAvg = items.reduce((s, x) => s + x.rf * x.area, 0) / area;
+    shapeF = rfAvg / (A.realization_base * biggest.tf);
+  }
+  const rf = A.realization_base * shapeF * biggest.tf;
+
+  const gfa = (area * far) / 100 * rf;
+  const rooms = Math.floor((gfa * P.net_area_ratio) / P.room_area_sqm);
+  const land = items.reduce((s, x) => s + x.price * x.area, 0) * P.land_price_multiplier;
+  const build = gfa * P.unit_construction_cost * (1 + P.soft_cost_ratio);
+  const demoCost = items.reduce((s, x) => s + x.demo, 0) * P.demolition_cost_per_sqm;
+  const total = land + build + demoCost;
+  const deposit = rooms * P.deposit_per_room;
+  const equity = total - deposit;
+  const noi = rooms * P.monthly_rent_per_room * 12
+    * (1 - P.vacancy_rate) * (1 - P.opex_ratio);
+  const denom =
+    P.denominator === "total_cost" ? total :
+    P.denominator === "land_cost" ? land : equity;
+
+  return {
+    n: items.length, area, far, rf, shapeF, exact,
+    gfa, rooms, land, build, demoCost, total, deposit,
+    s1: denom > 0 ? noi / denom : NaN,
+    sun: items.reduce((s, x) => s + x.sun, 0) / items.length,
+    dist: Math.min(...items.map((x) => x.dist)),
+  };
+}
+
+/** 선택 집합이 연접으로 하나로 이어지는가. 끊기면 몇 덩어리인지 돌려준다. */
+export function connectivity(indices, adj) {
+  const set = new Set(indices);
+  const seen = new Set();
+  const groups = [];
+  for (const start of indices) {
+    if (seen.has(start)) continue;
+    const stack = [start], g = [];
+    seen.add(start);
+    while (stack.length) {
+      const i = stack.pop();
+      g.push(i);
+      for (const j of adj[i] || []) {
+        if (set.has(j) && !seen.has(j)) { seen.add(j); stack.push(j); }
+      }
+    }
+    groups.push(g);
+  }
+  return groups;
 }

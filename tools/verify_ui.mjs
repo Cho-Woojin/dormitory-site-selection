@@ -165,6 +165,86 @@ const exPaint = await pg.evaluate(() =>
 ok("제외 필지 표시 토글", exPaint.includes("0.42"));
 await pg.uncheck("#showEx");
 
+// ── 3b. 합필 ─────────────────────────────────────────────
+console.log("\n3b) 합필");
+const asmRef = JSON.parse(readFileSync("data/interim/_py_assembly.json", "utf8"));
+await pg.evaluate(() => { document.getElementById("asmMode").checked = true; });
+const asmRes = [];
+for (const cse of asmRef) {
+  // 도형을 얻으려면 해당 필지가 화면에 있어야 한다. 첫 필지로 지도를 옮긴다.
+  await pg.evaluate((pnu) => {
+    const s = window.__state;
+    s.asm = []; s.geomCache.clear();
+    const i = s.idx.get(pnu);
+    const fs = window.__map.querySourceFeatures("parcels", { sourceLayer: "parcels" });
+    return i;
+  }, cse.pnus[0]);
+  // 필지 좌표는 Python 기준 세트에 없으므로, 타일에서 찾을 때까지 후보 리스트로 이동
+  await pg.evaluate((pnus) => {
+    const s = window.__state;
+    s.asm = pnus.map((p) => s.idx.get(p)).filter((v) => v !== undefined);
+  }, cse.pnus);
+  const got = await pg.evaluate(() => {
+    const s = window.__state;
+    // 지도 이동 없이 도형이 없으면 근사값이 나온다. 그건 별도로 표시한다.
+    window.__renderAsm && window.__renderAsm();
+    return s.asm.length;
+  });
+  asmRes.push({ ref: cse, n: got });
+}
+ok("합필 기준 세트 로드", asmRef.length >= 10, `${asmRef.length}건`);
+ok("합필 인덱스 매핑", asmRes.every((r) => r.n === r.ref.pnus.length),
+  asmRes.map((r) => `${r.n}/${r.ref.pnus.length}`).join(" "));
+
+// 연접 관계가 Python 과 같은가 (기준 세트는 전부 연접 그룹이다)
+const connOk = await pg.evaluate((sets) => {
+  const s = window.__state;
+  return sets.map((pnus) => {
+    const idx = pnus.map((p) => s.idx.get(p)).filter((v) => v !== undefined);
+    const seen = new Set(), stack = [idx[0]], set = new Set(idx);
+    seen.add(idx[0]);
+    while (stack.length) {
+      const i = stack.pop();
+      for (const j of s.D.adj[i] || []) if (set.has(j) && !seen.has(j)) { seen.add(j); stack.push(j); }
+    }
+    return seen.size === idx.length;
+  });
+}, asmRef.map((c) => c.pnus));
+ok("합필 연접 판정", connOk.every(Boolean), `${connOk.filter(Boolean).length}/${connOk.length} 연결`);
+
+// 합필 수치가 Python 과 맞는가. 타일 좌표 스냅 때문에 완전 일치는 불가능하므로
+// 허용 오차를 명시적으로 둔다 (실측: 최대 1실 / 0.049%p).
+let maxRoomErr = 0, maxS1Err = 0, exactGeom = 0;
+for (const cse of asmRef) {
+  await pg.evaluate(([lon, lat]) => { window.__map.jumpTo({ center: [lon, lat], zoom: 17.6 }); },
+    [cse.lon, cse.lat]);
+  await pg.waitForTimeout(3500);
+  const r = await pg.evaluate((pnus) => {
+    const s = window.__state;
+    s.asm = []; s.geomCache.clear();
+    for (const p of pnus) { const i = s.idx.get(p); if (i !== undefined) s.asm.push(i); }
+    for (const i of s.asm) window.__cacheGeom(s.D.ids[i]);
+    window.__renderAsm();
+    return window.__lastAsm;
+  }, cse.pnus);
+  if (!r) continue;
+  maxRoomErr = Math.max(maxRoomErr, Math.abs(r.rooms - cse.rooms));
+  maxS1Err = Math.max(maxS1Err, Math.abs(r.s1 - cse.s1) * 100);
+  if (r.exact) exactGeom++;
+  if (Math.abs(r.area - cse.area) > 1) {
+    ok("합필 면적 일치", false, `${r.area} vs ${cse.area}`);
+    break;
+  }
+}
+ok("합필 도형 정확 확보", exactGeom === asmRef.length, `${exactGeom}/${asmRef.length}`);
+ok("합필 실 수 오차 ≤1실", maxRoomErr <= 1, `최대 ${maxRoomErr}실`);
+ok("합필 S1 오차 ≤0.1%p", maxS1Err <= 0.1, `최대 ${maxS1Err.toFixed(3)}%p`);
+await pg.evaluate(() => {
+  window.__state.asm = [];
+  document.getElementById("asmMode").checked = false;
+  document.getElementById("asm").hidden = true;
+});
+
 // ── 4. 선택·상세 ─────────────────────────────────────────
 console.log("\n4) 선택 · 상세");
 await pg.waitForTimeout(300);

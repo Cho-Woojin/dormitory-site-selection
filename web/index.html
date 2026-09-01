@@ -127,6 +127,13 @@
       <label class="check"><input type="checkbox" id="showEx"> 제외 필지 표시</label>
     </div>
 
+    <div class="grp">
+      <h3>합필</h3>
+      <label class="check"><input type="checkbox" id="asmMode"> 합필 모드 (필지를 눌러 담기)</label>
+      <div class="hint">규모 미달 필지도 담을 수 있습니다. 합필은 <b>연접</b>이 요건이라
+        도로로 갈린 필지는 별동으로 계산됩니다.</div>
+    </div>
+
     <button class="btn" id="reset">기본값으로 되돌리기</button>
   </div>
 </section>
@@ -149,6 +156,15 @@
     <button class="iconbtn" id="detailClose" aria-label="상세 닫기">✕</button>
   </h2>
   <div class="body" id="detailBody"></div>
+</section>
+
+<!-- 합필 -->
+<section class="panel" id="asm" aria-labelledby="asmTitle" hidden>
+  <h2 id="asmTitle">합필 <span id="asmCount" class="num"></span>
+    <span class="spacer"></span>
+    <button class="iconbtn" id="asmClear" aria-label="비우기" title="비우기">↺</button>
+    <button class="iconbtn" id="asmClose" aria-label="닫기">✕</button></h2>
+  <div class="body" id="asmBody"></div>
 </section>
 
 <!-- 범례 -->

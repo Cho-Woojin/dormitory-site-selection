@@ -2,7 +2,7 @@
 
 import {
   prepare, computeRanking, financials, exclusionReasons,
-  FLAG, GRADE_LABELS,
+  assemble, connectivity, FLAG, GRADE_LABELS,
 } from "./score.js";
 
 /* MapLibre 는 `zoom` 을 최상위 interpolate/step 에서만 허용한다.
@@ -39,6 +39,7 @@ const won = (v) =>
 const state = {
   meta: null, D: null, idx: null, result: null,
   selected: null, map: null, painted: new Set(), zoneNames: null,
+  asm: [], geomCache: new Map(),
 };
 
 /* ── 파라미터 읽기 ─────────────────────────────────────── */
@@ -124,6 +125,7 @@ function recompute() {
 
   renderList(res, P);
   if (state.selected) renderDetail(state.selected);
+  if (state.asm.length) renderAsm();
   return performance.now() - t0;
 }
 
@@ -246,6 +248,147 @@ function selectParcel(id, fly) {
   }
 }
 
+/* ── 합필 ──────────────────────────────────────────────── */
+
+/** 위경도 → 대략적 미터 좌표 (선택 영역 중심 기준 등거리 근사) */
+function toMeters(coords, lat0, lon0) {
+  const kx = 111320 * Math.cos((lat0 * Math.PI) / 180);
+  return coords.map(([lon, lat]) => [(lon - lon0) * kx, (lat - lat0) * 110540]);
+}
+
+/** 타일에서 필지 꼭짓점을 긁어 캐시한다. 나중에 화면 밖으로 나가도 계산할 수 있게. */
+function cacheGeom(id) {
+  if (state.geomCache.has(id)) return;
+  const fs = state.map.querySourceFeatures("parcels", {
+    sourceLayer: "parcels", filter: ["==", ["get", "id"], id],
+  });
+  const pts = [];
+  const walk = (c) => (Array.isArray(c[0]) ? c.forEach(walk) : pts.push(c));
+  fs.forEach((f) => walk(f.geometry.coordinates));
+  if (pts.length) state.geomCache.set(id, pts);
+}
+
+/** 타일 로드가 늦으면 도형을 못 얻는다. 빠진 것만 다시 채우고, 채워지면 다시 그린다. */
+function fillMissingGeom() {
+  if (!state.asm.length) return;
+  let added = 0;
+  for (const i of state.asm) {
+    const id = state.D.ids[i];
+    if (state.geomCache.has(id)) continue;
+    cacheGeom(id);
+    if (state.geomCache.has(id)) added++;
+  }
+  if (added) renderAsm();
+}
+
+function asmToggle(id) {
+  const i = state.idx.get(id);
+  if (i === undefined) return false;          // 정적 필터 탈락 필지는 합필 불가
+  const at = state.asm.indexOf(i);
+  if (at >= 0) state.asm.splice(at, 1);
+  else { state.asm.push(i); cacheGeom(id); }
+  renderAsm();
+  paintAsm();
+  return true;
+}
+
+function paintAsm() {
+  const ids = state.asm.map((i) => state.D.ids[i]);
+  state.map.setFilter("parcel-asm", ["in", ["get", "id"], ["literal", ids]]);
+  state.map.setFilter("parcel-asm-line", ["in", ["get", "id"], ["literal", ids]]);
+}
+
+function renderAsm() {
+  const el = $("asmBody");
+  const P = state.P;
+  const A = state.meta.assembly;
+  $("asmCount").textContent = state.asm.length ? String(state.asm.length) : "";
+  if (!state.asm.length) {
+    $("asm").hidden = !$("asmMode").checked;
+    el.innerHTML = `<div class="empty">지도에서 필지를 눌러 담으세요.<br>
+      규모 미달 필지도 담을 수 있습니다.</div>`;
+    return;
+  }
+  $("asm").hidden = false;
+
+  const D = state.D;
+  const items = state.asm.map((i) => ({
+    area: D.area[i], far: D.far[i], tf: D.tf[i], rf: D.rf[i],
+    price: D.price[i], demo: D.demo[i], sun: D.sun[i], dist: D.dist[i],
+    flags: D.flags[i], zone: state.zoneOf(D.ids[i]),
+  }));
+
+  // 합필 폴리곤 꼭짓점 (미터 좌표)
+  let hull = null;
+  const all = [];
+  let have = 0;
+  for (const i of state.asm) {
+    const pts = state.geomCache.get(D.ids[i]);
+    if (pts) { all.push(...pts); have++; }
+  }
+  if (have === state.asm.length && all.length >= 3) {
+    const lat0 = all.reduce((s, p) => s + p[1], 0) / all.length;
+    const lon0 = all.reduce((s, p) => s + p[0], 0) / all.length;
+    hull = toMeters(all, lat0, lon0);
+  }
+
+  const m = assemble(items, hull, P, A);
+  window.__lastAsm = m;
+  const groups = connectivity(state.asm, D.adj);
+  const soloBest = Math.max(...state.asm.map((i) => state.result.s1[i] || -Infinity));
+  const soloCand = state.asm.filter((i) => state.result.isCand[i]).length;
+  const isInd = items.some((x) => A.industrial_zones.includes(x.zone));
+  const needPlan = isInd && m.area >= A.district_plan_threshold_sqm;
+
+  const rows = state.asm.map((i) => {
+    const id = D.ids[i];
+    return `<div class="pill"><span class="nm">${state.nameOf(id) || id}</span>` +
+      `<span class="a">${Math.round(D.area[i]).toLocaleString()}㎡</span>` +
+      `<button data-rm="${id}" aria-label="빼기">✕</button></div>`;
+  }).join("");
+
+  const conn = groups.length === 1
+    ? `<div class="note">연접 확인. <b>1개 필지로 합필 가능</b>합니다.</div>`
+    : `<div class="note warn">연접이 끊깁니다. <b>${groups.length}개 덩어리</b>
+        (${groups.map((g) => g.length).join(" + ")}필지)로 나뉩니다.
+        합필은 맞닿아야 하므로 도로 건너편은 <b>별동</b>으로 지어야 합니다.
+        아래 수치는 한 덩어리로 가정한 값이라 참고용입니다.</div>`;
+
+  const plan = needPlan
+    ? `<div class="note warn">준공업지역 부지가 ${Math.round(m.area).toLocaleString()}㎡ 로
+        <b>3,000㎡ 이상</b>입니다. 공동주택 지구단위계획 수립 의무가 생깁니다 (수년 소요).</div>`
+    : "";
+
+  const gain = m.s1 - soloBest;
+  const gainTxt = Number.isFinite(gain)
+    ? `<span class="delta" style="color:${gain >= 0 ? "var(--good)" : "var(--warn)"}">
+        단독 최고 대비 ${(gain * 100).toFixed(2)}%p</span>` : "";
+
+  el.innerHTML = `
+    <div class="sect">${rows}</div>
+    <div class="sect">
+      <div class="big">${m.rooms.toLocaleString()}실 · ${(m.s1 * 100).toFixed(2)}%</div>
+      ${gainTxt}
+      <dl class="kv" style="margin-top:8px">
+        <dt>필지 수</dt><dd>${m.n}필지 (단독 후보 ${soloCand})</dd>
+        <dt>합산 면적</dt><dd>${Math.round(m.area).toLocaleString()}㎡</dd>
+        <dt>적용용적률</dt><dd>${m.far.toFixed(0)}%</dd>
+        <dt>실현계수</dt><dd>${m.rf.toFixed(2)}${m.exact ? "" : " (근사)"}</dd>
+        <dt>가용연면적</dt><dd>${Math.round(m.gfa).toLocaleString()}㎡</dd>
+        <dt>총사업비</dt><dd><b>${won(m.total)}원</b></dd>
+        <dt>실당 사업비</dt><dd>${won(m.total / Math.max(m.rooms, 1))}원</dd>
+        <dt>최근접역</dt><dd>${Math.round(m.dist).toLocaleString()}m</dd>
+      </dl>
+    </div>
+    ${conn}${plan}
+    <div class="note">실 수·수익률은 타일 도형으로 계산합니다. 좌표가 격자에 스냅되어
+      <b>±1실</b> 정도 오차가 있을 수 있습니다.${m.exact ? "" :
+      " 지금은 필지 도형을 못 읽어 <b>근사값</b>입니다. 해당 필지가 화면에 보이면 정확해집니다."}</div>`;
+
+  el.querySelectorAll("[data-rm]").forEach((b) =>
+    b.addEventListener("click", () => asmToggle(b.dataset.rm)));
+}
+
 /* ── 부트 ──────────────────────────────────────────────── */
 async function boot() {
   const setBoot = (t) => { $("bootText").textContent = t; };
@@ -312,6 +455,9 @@ async function boot() {
   // 자동 테스트·캡처 스크립트에서 지도를 조작하기 위한 핸들
   window.__map = map;
   window.__state = state;
+  window.__asmToggle = asmToggle;   // 자동 테스트에서 합필 담기를 호출한다
+  window.__renderAsm = renderAsm;
+  window.__cacheGeom = cacheGeom;
   map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "bottom-left");
   map.addControl(new maplibregl.ScaleControl({ maxWidth: 96, unit: "metric" }), "bottom-left");
 
@@ -349,6 +495,16 @@ async function boot() {
     paint: { "line-color": "#0b0b0b", "line-width": 1.6 },
   });
   // 선택 강조는 두 겹으로. 흰 케이싱이 없으면 짙은 필지 위에서 선이 묻힌다.
+  map.addLayer({
+    id: "parcel-asm", type: "fill", source: "parcels", "source-layer": "parcels",
+    filter: ["in", ["get", "id"], ["literal", []]],
+    paint: { "fill-color": "#eb6834", "fill-opacity": 0.42 },
+  });
+  map.addLayer({
+    id: "parcel-asm-line", type: "line", source: "parcels", "source-layer": "parcels",
+    filter: ["in", ["get", "id"], ["literal", []]],
+    paint: { "line-color": "#eb6834", "line-width": 1.8 },
+  });
   map.addLayer({
     id: "parcel-selected-casing", type: "line", source: "parcels", "source-layer": "parcels",
     filter: ["==", ["get", "id"], ""],
@@ -422,6 +578,7 @@ async function boot() {
   const ms = recompute();
   console.info(`[dss] 최초 계산 ${ms.toFixed(0)}ms · 후보 ${state.result.order.length}`);
   $("boot").hidden = true;
+  map.on("idle", fillMissingGeom);
 
   // 상호작용
   let hovered = "";
@@ -440,11 +597,14 @@ async function boot() {
   });
   map.on("click", (e) => {
     const fs = map.queryRenderedFeatures(e.point, { layers: ["parcel-fill"] });
-    if (fs.length) {
-      const p = fs[0].properties;
-      if (p.nm) state.tileNames.set(p.id, p.nm);
-      selectParcel(p.id, false);
+    if (!fs.length) return;
+    const p = fs[0].properties;
+    if (p.nm) state.tileNames.set(p.id, p.nm);
+    if ($("asmMode").checked) {
+      if (!asmToggle(p.id)) selectParcel(p.id, false);
+      return;
     }
+    selectParcel(p.id, false);
   });
 }
 
@@ -505,6 +665,27 @@ function wireUI() {
   $("aboutBtn").addEventListener("click", () => aboutOpen($("about").hidden));
   $("aboutClose").addEventListener("click", () => aboutOpen(false));
 
+  $("asmMode").addEventListener("change", (e) => {
+    if (!e.target.checked) {
+      state.asm = [];
+      paintAsm();
+      $("asm").hidden = true;
+    } else {
+      renderAsm();
+    }
+  });
+  $("asmClear").addEventListener("click", () => {
+    state.asm = [];
+    paintAsm();
+    renderAsm();
+  });
+  $("asmClose").addEventListener("click", () => {
+    $("asmMode").checked = false;
+    state.asm = [];
+    paintAsm();
+    $("asm").hidden = true;
+  });
+
   $("detailClose").addEventListener("click", () => {
     $("detail").hidden = true;
     document.body.classList.remove("has-detail");
@@ -557,6 +738,7 @@ function wireUI() {
   addEventListener("keydown", (e) => {
     if (e.key !== "Escape") return;
     if (!$("about").hidden) { $("aboutClose").click(); return; }
+    if ($("asmMode").checked && state.asm.length) { $("asmClear").click(); return; }
     if (!$("detail").hidden) $("detailClose").click();
   });
 }
