@@ -14,8 +14,7 @@
 - [x] **T-003** Python 환경 — geopandas·shapely·pyproj·requests·dotenv 동작 확인
   - rasterio·osmnx·elevation은 D-008/D-010으로 불필요해져 미설치
 - [x] **T-004** 타일 툴체인 — tippecanoe v2.79.0
-- [ ] **T-005** 첫 커밋 및 GitHub 푸시
-  - 완료조건: `git log` 에 커밋 1개, `git push` 성공
+- [x] **T-005** GitHub 푸시 — `Cho-Woojin/dormitory-site-selection` (public)
 
 ---
 
