@@ -23,7 +23,14 @@ class RangeHandler(SimpleHTTPRequestHandler):
             return super().send_head()
         m = re.fullmatch(r"bytes=(\d*)-(\d*)", rng.strip())
         if not m:
-            return super().send_head()
+            # 파싱 못 하는 Range 를 200 전체 응답으로 흘려보내면 PMTiles 가
+            # 조각 대신 파일 전체를 받아 pbf 파싱이 깨진다("Unimplemented type").
+            # 조용히 틀린 바이트를 주느니 크게 실패한다.
+            sys.stderr.write(f"!! 처리 못한 Range: {rng!r}  {self.path}\n")
+            self.send_response(416)
+            self.send_header("Content-Range", "bytes */*")
+            self.end_headers()
+            return None
         try:
             f = open(path, "rb")
         except OSError:

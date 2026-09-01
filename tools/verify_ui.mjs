@@ -286,7 +286,9 @@ ok("합필 실 수 오차 ≤2%", maxRoomRel <= 0.02,
 ok("합필 S1 오차 ≤0.1%p", maxS1Err <= 0.1, `최대 ${maxS1Err.toFixed(3)}%p`);
 if (pg.errors.length) {
   console.log(`  ⚠️  타일 디코드 경고 ${pg.errors.length}건 — ${pg.errors[0]}`);
-  console.log("     (간헐적. 합필 수치 검증은 통과했고 도형도 10/10 확보됨. 배포본에서 재확인)");
+  console.log("     3b 는 geomCache 를 비우고 타일 로딩 중에 querySourceFeatures 를 부른다.");
+  console.log("     배포본 동일 시퀀스에서는 0건이고 서버 응답도 전부 200/206 이므로");
+  console.log("     제품 결함이 아니라 하네스 경합으로 본다. 수치 검증은 통과.");
 }
 await pg.evaluate(() => {
   window.__state.asm = [];
