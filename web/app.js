@@ -349,7 +349,11 @@ async function boot() {
     fetch("data/boundary.geojson").then((r) => r.json()),
     fetch("data/stations.geojson").then((r) => r.json()),
   ]);
-  map.addSource("bnd", { type: "geojson", data: bnd });
+  map.addSource("bnd", {
+    type: "geojson", data: bnd,
+    // CC BY 4.0 표기 의무. 지도 attribution 에도 남긴다.
+    attribution: '경계: 통계청 SGIS (가공 <a href="https://github.com/vuski/admdongkor" target="_blank" rel="noopener">vuski/admdongkor</a>, CC BY 4.0) · 필지·건물: 국토교통부',
+  });
   map.addLayer({
     id: "bnd-line", type: "line", source: "bnd",
     paint: { "line-color": "#52514e", "line-width": 1.6, "line-dasharray": [3, 2] },
@@ -461,6 +465,13 @@ function wireUI() {
     recompute();
   });
 
+  const aboutOpen = (v) => {
+    $("about").hidden = !v;
+    $("aboutBtn").setAttribute("aria-expanded", String(v));
+  };
+  $("aboutBtn").addEventListener("click", () => aboutOpen($("about").hidden));
+  $("aboutClose").addEventListener("click", () => aboutOpen(false));
+
   $("detailClose").addEventListener("click", () => {
     $("detail").hidden = true;
     document.body.classList.remove("has-detail");
@@ -511,7 +522,9 @@ function wireUI() {
   });
 
   addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && !$("detail").hidden) $("detailClose").click();
+    if (e.key !== "Escape") return;
+    if (!$("about").hidden) { $("aboutClose").click(); return; }
+    if (!$("detail").hidden) $("detailClose").click();
   });
 }
 

@@ -132,10 +132,25 @@ header .spacer { flex: 1; }
           max-height: calc(100vh - var(--header-h) - 24px); }
 /* 상세 패널도 좌측 하단이라, 열리면 파라미터 높이를 줄여 겹치지 않게 한다. */
 body.has-detail #params { max-height: calc(100vh - var(--header-h) - 46vh - 36px); }
+/* 하단 34px 는 지도 attribution 자리로 비워둔다. CC BY 4.0 표기가 가려지면 안 된다. */
 #list   { top: calc(var(--header-h) + 12px); right: 12px; width: 310px;
-          max-height: calc(100vh - var(--header-h) - 24px); }
+          max-height: calc(100vh - var(--header-h) - 46px); }
 #detail { bottom: 12px; left: 12px; width: 302px; max-height: 46vh; }
 #detail[hidden] { display: none; }
+#about {
+  top: calc(var(--header-h) + 12px); left: 50%; transform: translateX(-50%);
+  width: min(560px, calc(100vw - 24px));
+  max-height: calc(100vh - var(--header-h) - 24px); z-index: 40;
+}
+#about[hidden] { display: none; }
+#about .p { margin: 0 0 9px; font-size: 12.5px; color: var(--ink-2); line-height: 1.65; }
+#about .p:last-child { margin-bottom: 0; }
+/* 각주도 읽어야 하는 본문이다. --ink-3(4.13:1)은 WCAG AA 미달이라 --ink-2 를 쓴다. */
+#about .p.small { font-size: 11.5px; color: var(--ink-2); }
+#about .sh { margin: 0 0 7px; font-size: 12px; font-weight: 650; color: var(--ink); }
+#about a { color: var(--accent-text); }
+#about .kv.src { grid-template-columns: auto 1fr; gap: 4px 16px; margin-bottom: 9px; }
+#about .kv.src dd { text-align: right; color: var(--ink-2); }
 
 .panel > h2 {
   margin: 0; padding: 11px 14px; font-size: 12.5px; font-weight: 600;
@@ -300,13 +315,13 @@ select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
   #params { top: calc(var(--header-h) + 8px); max-height: 56vh; }
   #params[data-collapsed="true"] { max-height: none; }
   #params[data-collapsed="true"] .body { display: none; }
-  #list { top: auto; bottom: 8px; max-height: 34vh; }
+  #list { top: auto; bottom: 26px; max-height: 34vh; }
   #list[data-collapsed="true"] .body { display: none; }
   #detail { bottom: 8px; max-height: 56vh; z-index: 25; }
   body.has-detail #params { max-height: none; }
   body.has-detail #params .body { display: none; }
   #legend {
-    bottom: calc(34vh + 16px); top: auto; left: 8px; right: auto; padding: 7px 9px;
+    bottom: calc(34vh + 34px); top: auto; left: 8px; right: auto; padding: 7px 9px;
   }
   #legend .ramp { width: 116px; }
   #legend .ex { margin-top: 6px; padding-top: 5px; }
@@ -317,3 +332,7 @@ select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
   header h1 { font-size: 13.5px; }
   header .badge { font-size: 11px; padding: 3px 7px; }
 }
+
+/* 지도 attribution 은 라이선스 표기다. 패널 위로 올려 가려지지 않게 한다. */
+.maplibregl-ctrl-bottom-right { z-index: 22; }
+.maplibregl-ctrl-attrib.maplibregl-compact { margin: 0 8px 8px 0; }

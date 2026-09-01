@@ -209,6 +209,10 @@ const contrast = await pg.evaluate(() => {
   probe(".btn", "버튼");
   probe(".badge", "가정 배지");
   probe("#legend .ttl", "범례 제목");
+  document.getElementById("aboutBtn").click();
+  probe("#about .p", "출처 패널 본문");
+  probe("#about .p.small", "출처 패널 각주");
+  document.getElementById("aboutClose").click();
   return out;
 });
 for (const [k, v] of Object.entries(contrast)) ok(`대비 ${k}`, v >= 4.5, `${v}:1`);
@@ -232,6 +236,31 @@ ok("lang=ko", meta.lang === "ko");
 ok("title 존재", meta.title.length > 5);
 ok("description 존재", meta.desc > 20);
 ok("em-dash 없음", meta.emdash === false);
+
+// 출처·라이선스 표기 (T-604). SGIS 경계는 CC BY 4.0 이라 표기가 의무다.
+const attrib = await pg.evaluate(() => {
+  document.getElementById("aboutBtn").click();
+  const t = document.getElementById("about").innerText;
+  const map = document.querySelector(".maplibregl-ctrl-attrib")?.innerHTML || "";
+  document.getElementById("aboutClose").click();
+  return { t, map, hidden: document.getElementById("about").hidden };
+});
+ok("출처 패널 열림/닫힘", attrib.hidden === true);
+ok("CC BY 4.0 표기", attrib.t.includes("CC BY 4.0"));
+ok("SGIS 표기", attrib.t.includes("SGIS"));
+ok("국토교통부 표기", attrib.t.includes("국토교통부"));
+ok("OpenStreetMap 표기", attrib.t.includes("OpenStreetMap") || attrib.map.includes("OpenStreetMap"));
+ok("가정 경고 문구", attrib.t.includes("투자 판단에 그대로 쓰면 안 됩니다"));
+ok("지도 attribution 에 CC BY", attrib.map.includes("CC BY 4.0"));
+// 라이선스 표기가 패널에 가려지면 안 된다
+const attVis = await pg.evaluate(() => {
+  const a = document.querySelector(".maplibregl-ctrl-attrib");
+  if (!a) return { ok: false, why: "attribution 없음" };
+  const r = a.getBoundingClientRect();
+  const pt = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+  return { ok: !!pt && (a === pt || a.contains(pt)), why: pt?.className || "" };
+});
+ok("attribution 가려지지 않음", attVis.ok, attVis.why);
 
 // ── 6. 반응형 ────────────────────────────────────────────
 console.log("\n6) 반응형");
