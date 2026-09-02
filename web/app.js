@@ -1020,8 +1020,14 @@ async function boot() {
   // 그룹 0 의 선택 강조가 그룹 1 의 채움에 덮인다.
   for (const spec of PARCEL_LAYERS) {
     TG.groups.forEach((_, k) => {
-      map.addLayer({ ...spec, id: `${spec.id}-${k}`,
-        source: `parcels${k}`, "source-layer": "parcels" });
+      map.addLayer({
+        ...spec, id: `${spec.id}-${k}`,
+        source: `parcels${k}`, "source-layer": "parcels",
+        // 후보 표가 오기 전에는 색을 칠할 근거가 없다. 그런데도 그리면
+        // 89.9만 필지 렌더링이 메인 스레드를 잡아 표 처리를 굶긴다
+        // (라이브 실측: 표 대기 75초 — 같은 파일 curl 은 12.7초).
+        layout: { ...(spec.layout || {}), visibility: "none" },
+      });
     });
   }
 
@@ -1126,6 +1132,10 @@ async function boot() {
 
   wireUI();
   const ms = recompute();
+  // 이제 칠할 근거가 생겼다. 여기서 켠다.
+  for (const spec of PARCEL_LAYERS) {
+    for (const l of TG.layers(spec.id)) map.setLayoutProperty(l, "visibility", "visible");
+  }
   step("최초 계산");
   window.__ready = true;
   window.__bootTiming = T;
