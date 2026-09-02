@@ -936,12 +936,7 @@ async function boot() {
   map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "bottom-left");
   map.addControl(new maplibregl.ScaleControl({ maxWidth: 96, unit: "metric" }), "bottom-left");
 
-  const scoring = await pScoring;
-  step("데이터 대기");
   state.meta = meta;
-  state.D = prepare(scoring, meta.scale);
-  state.idx = new Map(state.D.ids.map((v, i) => [v, i]));
-  step("표 준비");
 
   // 기본값을 컨트롤에 주입 (params.yaml 이 단일 출처)
   const d = meta.defaults;
@@ -1113,10 +1108,25 @@ async function boot() {
     `linear-gradient(90deg, ${RAMP.slice().reverse().join(",")})`;
 
   step("경계·역 구성");
+
+  /* 여기서 오버레이를 내린다. 지도·경계·역은 다 준비됐고, 남은 건 후보 표
+     (서울 전역 gzip 14MB)뿐이다. 그걸 기다리면 첫 화면이 8초 넘게 잠긴다.
+     지도를 먼저 보여 주고 목록은 데이터가 오면 채운다. */
+  $("boot").hidden = true;
+  $("listBody").innerHTML =
+    `<div class="empty">후보를 계산하는 중…<br><span class="num">898,800 필지</span></div>`;
+  await new Promise((r) => requestAnimationFrame(() => r()));   // 한 프레임 그리고
+
+  const scoring = await pScoring;
+  step("후보 표 대기");
+  state.D = prepare(scoring, meta.scale);
+  state.idx = new Map(state.D.ids.map((v, i) => [v, i]));
+  step("표 준비");
+
   wireUI();
   const ms = recompute();
   step("최초 계산");
-  $("boot").hidden = true;
+  window.__ready = true;
   window.__bootTiming = T;
   console.info(`[dss] 부팅 ${Math.round(performance.now())}ms · 후보 ${state.result.order.length}\n`
     + T.map(([k, v]) => `  ${String(v).padStart(6)}ms  ${k}`).join("\n"));

@@ -43,8 +43,8 @@ async function newPage(w = 1440, h = 900) {
   pg.on("pageerror", (e) => errors.push("PAGEERROR: " + e.message));
   pg.errors = errors;
   await pg.goto(BASE, { waitUntil: "domcontentloaded" });
-  await pg.waitForFunction(() => document.getElementById("boot")?.hidden === true,
-    null, { timeout: 60000 });
+  // 오버레이는 지도가 준비되면 내려간다. 후보 표는 그 뒤에 온다.
+  await pg.waitForFunction(() => window.__ready === true, null, { timeout: 120000 });
   await pg.waitForFunction(() => !!window.__map && window.__map.loaded(), null, { timeout: 60000 });
   return pg;
 }
@@ -82,7 +82,7 @@ const btMap = Object.fromEntries(bt);
 // "데이터 대기" 도 뺀다. 동기 WebGL 초기화가 메인 스레드를 잡고 있으면
 // 네트워크가 끝나도 promise 가 못 풀려서 그 시간이 여기로 흘러든다
 // (실측 336ms ~ 1,038ms 로 요동). 환경에 좌우되지 않는 구간만 예산으로 둔다.
-const ENV = new Set(["Map 생성자", "데이터 대기", "경계·역 대기"]);
+const ENV = new Set(["Map 생성자", "데이터 대기", "경계·역 대기", "후보 표 대기"]);
 const ours = bt.filter(([k]) => !ENV.has(k)).reduce((a, [, v]) => a + v, 0);
 // 예산은 규모에 따라 다르다. 서울 전역(89.9만 필지 · 후보 13.3만)에서
 // 표 준비 142 · 경계·역 구성 · 최초 계산 238ms 가 실측이다. 2개 구일 때는 124ms 였다.
@@ -93,6 +93,10 @@ ok("우리 몫 부팅 800ms 이내", ours <= 800,
 // 여기가 커지면 map "load"(타일까지) 를 다시 기다리고 있다는 뜻이다
 ok("타일을 기다리지 않음", (btMap["style.load 대기"] ?? 0) <= 200,
   `style 대기 ${btMap["style.load 대기"] ?? 0}ms`);
+// 첫 화면이 후보 표(gzip 14MB)를 기다리면 안 된다. 지도가 먼저 뜨고
+// 목록은 데이터가 오면 채운다.
+ok("오버레이가 후보 표를 기다리지 않음", "후보 표 대기" in btMap,
+  `단계: ${bt.map(([k]) => k).join(" · ")}`);
 
 // ── 2. Python 대조 (핵심) ────────────────────────────────
 globalThis.__sec = "2)";
@@ -786,7 +790,7 @@ console.log("\n6) 반응형");
 for (const [w, h, label] of [[390, 844, "모바일"], [820, 1180, "태블릿"], [1920, 1080, "와이드"]]) {
   const p2 = await browser.newPage({ viewport: { width: w, height: h } });
   await p2.goto(BASE, { waitUntil: "domcontentloaded" });
-  await p2.waitForFunction(() => document.getElementById("boot")?.hidden === true, null, { timeout: 60000 });
+  await p2.waitForFunction(() => window.__ready === true, null, { timeout: 120000 });
   await p2.waitForTimeout(1500);
   const r = await p2.evaluate(() => {
     const oflow = document.documentElement.scrollWidth > document.documentElement.clientWidth + 1;

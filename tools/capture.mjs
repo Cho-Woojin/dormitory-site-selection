@@ -35,7 +35,7 @@ async function shot(name, opts = {}) {
   } = opts;
   const pg = await browser.newPage({ viewport: { width: w, height: h }, deviceScaleFactor: 1.5 });
   await pg.goto(BASE, { waitUntil: "domcontentloaded" });
-  await pg.waitForFunction(() => document.getElementById("boot")?.hidden === true, null, { timeout: 60000 });
+  await pg.waitForFunction(() => window.__ready === true, null, { timeout: 120000 });
   await pg.waitForFunction(() => window.__map?.loaded?.(), null, { timeout: 60000 });
   await pg.evaluate((t) => {
     document.documentElement.dataset.theme = t;
