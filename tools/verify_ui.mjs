@@ -68,8 +68,12 @@ ok("콘솔 에러 없음", pg.errors.length === 0, pg.errors.slice(0, 2).join(" 
 // 우리가 통제하는 구간만 예산으로 묶는다.
 const bt = await pg.evaluate(() => window.__bootTiming || []);
 const btMap = Object.fromEntries(bt);
-const ours = bt.filter(([k]) => k !== "Map 생성자").reduce((a, [, v]) => a + v, 0);
-ok("우리 몫 부팅 600ms 이내", ours <= 600,
+// "데이터 대기" 도 뺀다. 동기 WebGL 초기화가 메인 스레드를 잡고 있으면
+// 네트워크가 끝나도 promise 가 못 풀려서 그 시간이 여기로 흘러든다
+// (실측 336ms ~ 1,038ms 로 요동). 환경에 좌우되지 않는 구간만 예산으로 둔다.
+const ENV = new Set(["Map 생성자", "데이터 대기"]);
+const ours = bt.filter(([k]) => !ENV.has(k)).reduce((a, [, v]) => a + v, 0);
+ok("우리 몫 부팅 200ms 이내", ours <= 200,
   `${ours}ms  (${bt.map(([k, v]) => `${k} ${v}`).join(" · ")})`);
 // 여기가 커지면 map "load"(타일까지) 를 다시 기다리고 있다는 뜻이다
 ok("타일을 기다리지 않음", (btMap["style.load 대기"] ?? 0) <= 200,
@@ -356,8 +360,9 @@ ok("이격 2,000m 준수", h2000.minSpacing >= 2000, `최근접 ${Math.round(h20
 ok("이격 키우면 더 분산", h2000.minSpacing > h1000.minSpacing,
   `${Math.round(h1000.minSpacing)} → ${Math.round(h2000.minSpacing)}m`);
 // 이격이 크면 요청 수를 못 채운다 — 조용히 적게 주면 안 된다
+// 안내는 목록이 아니라 패널 바닥(합계 영역)에 있다. 패널 전체에서 찾는다.
 const shortMsg = await pg.evaluate(() =>
-  document.getElementById("hubBody").innerText.includes("채울 수 없어"));
+  document.getElementById("hub").innerText.includes("채울 수 없어"));
 ok("못 채우면 화면에 이유 표시", h2000.n === 5 ? !shortMsg : shortMsg,
   `${h2000.n}/5곳${shortMsg ? " · 안내 있음" : ""}`);
 
@@ -781,21 +786,98 @@ for (const [w, h, label] of [[390, 844, "모바일"], [820, 1180, "태블릿"], 
   await p2.close();
 }
 
-// ── 7. 패널 겹침 ─────────────────────────────────────────
+// ── 7. 레이아웃 — 상태 × 화면폭 전수 ─────────────────────
 globalThis.__sec = "7)";
-console.log("\n7) 레이아웃 겹침");
-const overlap = await pg.evaluate(() => {
-  document.querySelector("#listBody .row")?.click();
-  const R = (id) => { const e = document.getElementById(id); if (!e || e.hidden) return null; const b = e.getBoundingClientRect(); return b.width ? b : null; };
-  const hit = (a, b) => a && b && a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
-  const ids = ["params", "list", "legend", "detail"];
-  const bad = [];
-  for (let i = 0; i < ids.length; i++)
-    for (let j = i + 1; j < ids.length; j++)
-      if (hit(R(ids[i]), R(ids[j]))) bad.push(`${ids[i]}×${ids[j]}`);
+console.log("\n7) 레이아웃 (상태 × 화면폭)");
+/* 몇 가지 상태만 보면 통과하는데, 실제로 깨진 건 조합이었다.
+   지도 컨트롤(줌·축척)까지 넣어야 한다 — 빼놓으면 "겹침 없음" 이 거짓이 된다.
+   실제로 줌 버튼이 파라미터 패널 뒤에 가려 눌리지 않고 있었다. */
+const PANEL_IDS = ["params", "list", "legend", "detail", "asm", "hub"];
+const CTRL_SEL = [".maplibregl-ctrl-bottom-left", ".maplibregl-ctrl-bottom-right"];
+const LAYOUT_STATES = {
+  "기본": () => {},
+  "파라미터접음": () => document.getElementById("paramsBtn").click(),
+  "상세": async () => {
+    const s = window.__state;
+    window.__selectParcel(s.D.ids[s.result.order[0]], false);
+    await new Promise((r) => setTimeout(r, 600));
+  },
+  "상세+접음": async () => {
+    const s = window.__state;
+    window.__selectParcel(s.D.ids[s.result.order[0]], false);
+    await new Promise((r) => setTimeout(r, 600));
+    document.getElementById("paramsBtn").click();
+  },
+  "합필": async () => {
+    const s = window.__state, i = s.result.order[0];
+    s.asm = [i, ...(s.D.adj[i] || []).slice(0, 3)];
+    document.getElementById("asmMode").checked = true;
+    window.__renderAsm();
+    await new Promise((r) => setTimeout(r, 400));
+  },
+  "거점": async () => {
+    document.getElementById("hubAuto").click();
+    await new Promise((r) => setTimeout(r, 900));
+  },
+  "거점+합필+접음": async () => {
+    document.getElementById("hubAuto").click();
+    await new Promise((r) => setTimeout(r, 900));
+    const s = window.__state, i = s.result.order[0];
+    s.asm = [i, ...(s.D.adj[i] || []).slice(0, 3)];
+    document.getElementById("asmMode").checked = true;
+    window.__renderAsm();
+    document.getElementById("paramsBtn").click();
+    await new Promise((r) => setTimeout(r, 500));
+  },
+  "범위그리기": async () => {
+    document.getElementById("drawBtn").click();
+    await new Promise((r) => setTimeout(r, 400));
+  },
+};
+
+const layoutCheck = ([ids, sels]) => {
+  const R = {};
+  const put = (k, e) => {
+    if (!e || e.hidden || getComputedStyle(e).display === "none") return;
+    const b = e.getBoundingClientRect();
+    if (b.width < 2 || b.height < 2) return;
+    R[k] = { x: b.left, y: b.top, r: b.right, b: b.bottom };
+  };
+  for (const id of ids) put(id, document.getElementById(id));
+  for (const sel of sels) put(sel.replace(".maplibregl-ctrl-", ""), document.querySelector(sel));
+  const bad = [], keys = Object.keys(R);
+  for (let i = 0; i < keys.length; i++) for (let j = i + 1; j < keys.length; j++) {
+    const a = R[keys[i]], b = R[keys[j]];
+    const ox = Math.min(a.r, b.r) - Math.max(a.x, b.x);
+    const oy = Math.min(a.b, b.b) - Math.max(a.y, b.y);
+    if (ox > 2 && oy > 2) bad.push(`겹침 ${keys[i]}×${keys[j]}`);
+  }
+  for (const k of keys) {
+    const a = R[k];
+    if (a.x < -2 || a.y < -2 || a.r > innerWidth + 2 || a.b > innerHeight + 2)
+      bad.push(`화면밖 ${k}`);
+  }
   return bad;
-});
-ok("패널 간 겹침 없음", overlap.length === 0, overlap.join(", "));
+};
+
+let layoutFails = 0, layoutRuns = 0;
+for (const w of [390, 820, 1440, 1920]) {
+  for (const [nm, setup] of Object.entries(LAYOUT_STATES)) {
+    const p2 = await newPage(w, 900);
+    await p2.evaluate(() => {
+      const e = document.getElementById("sggSel");
+      e.value = "11200"; e.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await p2.waitForTimeout(900);
+    await p2.evaluate(setup);
+    await p2.waitForTimeout(700);
+    const bad = await p2.evaluate(layoutCheck, [PANEL_IDS, CTRL_SEL]);
+    layoutRuns++;
+    if (bad.length) { layoutFails++; console.log(`  ❌ ${w}px ${nm}: ${bad.join(", ")}`); }
+    await p2.close();
+  }
+}
+ok("상태×화면폭 레이아웃", layoutFails === 0, `${layoutRuns - layoutFails}/${layoutRuns} 조합`);
 
 // ── 결과 ────────────────────────────────────────────────
 console.log("\n" + "=".repeat(56));

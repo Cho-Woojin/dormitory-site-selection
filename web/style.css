@@ -111,6 +111,8 @@ header .spacer { flex: 1; }
 
 .iconbtn {
   display: inline-flex; align-items: center; justify-content: center;
+  /* flex 로 눌리면 안 된다. 좁은 화면에서 17px 로 찌그러져 누르기 어려웠다. */
+  flex: none;
   width: 32px; height: 32px; border-radius: var(--r-ctl);
   background: var(--surface-2); color: var(--ink-2);
   border: 1px solid var(--border); cursor: pointer; font-size: 14px;
@@ -128,6 +130,10 @@ header .spacer { flex: 1; }
   border-radius: var(--r-panel); box-shadow: var(--shadow);
   display: flex; flex-direction: column; overflow: hidden;
 }
+/* 좌측 컬럼 폭. 하단 띠(지도 컨트롤·범례)가 이 값만큼 비켜선다.
+   비켜서지 않으면 줌 버튼이 패널 뒤로 들어가 눌리지 않는다(실제로 그랬다). */
+:root { --left-col: 314px; }
+body.left-empty { --left-col: 0px; }
 #params { top: calc(var(--header-h) + 12px); left: 12px; width: 302px;
           max-height: calc(100vh - var(--header-h) - 24px); }
 /* 햄버거로 접으면 패널을 아예 치운다 — 지도를 넓게 쓰라는 요청이므로
@@ -135,6 +141,8 @@ header .spacer { flex: 1; }
 body.params-off #params { display: none; }
 #paramsBtn { margin-right: 2px; }
 body.params-off #paramsBtn { background: var(--surface-3); }
+/* 지도 컨트롤은 패널 위로 올리고, 좌측 컬럼만큼 비켜세운다 */
+.maplibregl-ctrl-bottom-left { left: var(--left-col); z-index: 21; }
 .desktop-only { display: inline-grid; }
 @media (max-width: 900px) { .desktop-only { display: none; } }
 /* 상세 패널도 좌측 하단이라, 열리면 파라미터 높이를 줄여 겹치지 않게 한다. */
@@ -151,9 +159,14 @@ body.has-asm #params { max-height: calc(100vh - var(--header-h) - 62vh - 36px); 
 }
 .drawing #map { cursor: crosshair; }
 
+/* 거점은 결과물이므로 목록과 같은 우측 컬럼에 쌓는다.
+   별도 컬럼(right:334px)을 쓰면 1200px 미만에서 파라미터와 반드시 부딪힌다. */
 #hub {
-  top: calc(var(--header-h) + 12px); right: 334px; width: 344px;
-  max-height: calc(100vh - var(--header-h) - 46px);
+  top: calc(var(--header-h) + 12px); right: 12px; width: 310px; max-height: 52vh;
+}
+body.has-hub #list {
+  top: calc(var(--header-h) + 52vh + 24px);
+  max-height: calc(100vh - var(--header-h) - 52vh - 58px);
 }
 #hub[hidden] { display: none; }
 #hub .site {
@@ -177,20 +190,28 @@ body.has-asm #params { max-height: calc(100vh - var(--header-h) - 62vh - 36px); 
 #hub .site .nm:focus-visible { outline: 2px solid var(--accent-text); outline-offset: 2px; }
 /* 지금 보고 있는 거점 */
 #hub .site.on { background: var(--surface-2); border-radius: 6px; }
-#hub .site .meta { font-size: 11px; color: var(--ink-3); margin-top: 1px; }
+/* 폭이 좁아지면 "45 위" 처럼 어색하게 끊긴다. 넘치면 말줄임. */
+#hub .site .meta {
+  font-size: 11px; color: var(--ink-3); margin-top: 1px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+#hub .site .nm { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#hub .site > div { min-width: 0; }   /* grid 자식이 줄어들 수 있게 */
 #hub .site .y { color: var(--accent-text); font-weight: 650; font-variant-numeric: tabular-nums; }
 #hub .site button[data-site] { border: 0; background: transparent; color: var(--ink-3);
   cursor: pointer; font-size: 13px; padding: 0 2px; }
 #hub .site button[data-site]:hover { color: var(--ink); }
-#hub .tot {
-  margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border);
-}
+/* 합계는 결론이다. 목록이 길어도 항상 보이도록 패널 바닥에 둔다.
+   스크롤 영역 안에 sticky 로 넣으면 뒤따르는 행을 덮어 잘린 것처럼 보인다. */
+#hubTot { flex: 0 0 auto; padding: 0 12px 12px; }
+#hubTot:empty { display: none; }
+#hub .tot { padding-top: 10px; border-top: 1px solid var(--border); }
 #hub .tot .big { font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; }
 
 /* 합필은 좌측 하단(상세 패널 자리). 거점 패널과 자리를 나눈다.
    합필 모드에서는 필지를 눌러도 상세가 아니라 담기가 되므로 충돌하지 않는다. */
 #asm {
-  bottom: 12px; left: 12px; width: 320px; max-height: 62vh;
+  bottom: 12px; left: 12px; width: 302px; max-height: 62vh;
 }
 #asm[hidden] { display: none; }
 #asm .pill {
@@ -336,8 +357,11 @@ select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
 /* ── 범례 ───────────────────────────────────────────────── */
 #legend {
-  /* 우측 하단은 후보 리스트가 차지한다. 지도 영역 안쪽 하단에 둔다. */
-  position: fixed; z-index: 20; bottom: 12px; left: 326px;
+  /* 우측 하단은 후보 리스트가 차지한다. 지도 영역 안쪽 하단에 둔다.
+     좌측 컬럼(파라미터·상세·합필)이 비면 왼쪽 끝으로 붙는다 —
+     고정 오프셋으로 두면 패널을 접었을 때 화면 중앙에 떠 보인다. */
+  position: fixed; z-index: 20; bottom: 12px;
+  left: calc(var(--left-col) + 116px);   /* 지도 컨트롤(축척 ~96px) 다음 자리 */
   background: var(--surface); border: 1px solid var(--border);
   border-radius: var(--r-panel); box-shadow: var(--shadow);
   padding: 10px 12px; font-size: 11.5px;
@@ -387,60 +411,49 @@ select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
   /* 모바일은 지도가 주인공이다. 파라미터는 기본 접힘, 범례는 리스트 위로 보낸다.
      (범례를 우상단에 두면 파라미터 패널을 가린다.) */
   header .sub { display: none; }
+  /* 버튼이 눌리지 않도록 제목이 대신 줄어든다 */
+  header h1 { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* 손가락용. 트랙 높이와 손잡이를 키운다 */
+  input[type="range"] { height: 26px; }
+  input[type="range"]::-webkit-slider-thumb { width: 20px; height: 20px; margin-top: -8.5px; }
   #params, #list, #detail { left: 8px; right: 8px; width: auto; }
   #params { top: calc(var(--header-h) + 8px); max-height: 56vh; }
   #params[data-collapsed="true"] { max-height: none; }
   #params[data-collapsed="true"] .body { display: none; }
-  #list { top: auto; bottom: 26px; max-height: 34vh; }
+  #list { top: auto; max-height: 34vh; }
   #list[data-collapsed="true"] .body { display: none; }
   #detail { bottom: 8px; max-height: 56vh; z-index: 25; }
-  #drawBtn[aria-pressed="true"] {
-  background: var(--accent); color: var(--accent-ink); border-color: var(--accent);
-}
-.drawing #map { cursor: crosshair; }
-
-#hub {
-  top: calc(var(--header-h) + 12px); right: 334px; width: 344px;
-  max-height: calc(100vh - var(--header-h) - 46px);
-}
-#hub[hidden] { display: none; }
-#hub .site {
-  display: grid; grid-template-columns: 22px 1fr auto auto; gap: 8px;
-  align-items: center; padding: 7px 4px; border-bottom: 1px solid var(--border);
-  font-size: 12px;
-}
-#hub .site:last-child { border-bottom: 0; }
-#hub .site .no {
-  width: 20px; height: 20px; border-radius: 999px; background: var(--accent);
-  color: var(--accent-ink); display: grid; place-items: center;
-  font-size: 11px; font-weight: 700;
-}
-/* 이름은 버튼이다 — 누르면 그 거점으로 지도가 이동한다 */
-#hub .site .nm {
-  font: inherit; font-weight: 550; color: var(--ink);
-  border: 0; background: transparent; padding: 0; text-align: left;
-  cursor: pointer; display: block; width: 100%;
-}
-#hub .site .nm:hover { color: var(--accent-text); text-decoration: underline; }
-#hub .site .nm:focus-visible { outline: 2px solid var(--accent-text); outline-offset: 2px; }
-/* 지금 보고 있는 거점 */
-#hub .site.on { background: var(--surface-2); border-radius: 6px; }
-#hub .site .meta { font-size: 11px; color: var(--ink-3); margin-top: 1px; }
-#hub .site .y { color: var(--accent-text); font-weight: 650; font-variant-numeric: tabular-nums; }
-#hub .site button[data-site] { border: 0; background: transparent; color: var(--ink-3);
-  cursor: pointer; font-size: 13px; padding: 0 2px; }
-#hub .site button[data-site]:hover { color: var(--ink); }
-#hub .tot {
-  margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border);
-}
-#hub .tot .big { font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; }
-
-#asm { top: auto; bottom: 26px; left: 8px; right: 8px; width: auto; max-height: 52vh; z-index: 26; }
+  /* 인스펙터 3종(상세·합필·거점)은 하나의 바텀시트 자리를 나눠 쓴다.
+     좁은 화면에서 셋을 동시에 띄우면 서로를 덮는다. app.js 가 하나만 열어 둔다. */
+  #detail, #asm, #hub {
+    top: auto; left: 8px; right: 8px; width: auto;
+    max-height: 56vh; z-index: 25;
+  }
+  body.has-detail #params, body.has-asm #params, body.has-hub #params {
+    max-height: none;
+  }
+  body.has-detail #params .body,
+  body.has-asm #params .body,
+  body.has-hub #params .body { display: none; }
+  /* 시트가 열리면 목록은 가려지므로 접는다 (겹쳐 두면 스크롤이 엉킨다) */
+  body.has-sheet #list .body { display: none; }
+  body.has-sheet #list { max-height: none; bottom: calc(56vh + var(--mobile-bottom) + 8px); }
   body.has-detail #params { max-height: none; }
   body.has-detail #params .body { display: none; }
-  #legend {
-    bottom: calc(34vh + 34px); top: auto; left: 8px; right: auto; padding: 7px 9px;
-  }
+  #legend { top: auto; left: 8px; right: auto; padding: 7px 9px; }
+  /* 시트가 열리면 화면의 절반 이상을 차지한다. 범례는 부차적이므로 비켜 준다. */
+  body.has-sheet #legend { display: none; }
+  /* 좁은 화면의 하단은 층으로 쌓는다. 같은 자리에 두면 서로 덮는다.
+       [범례] → [축척] → [목록/시트] → [attribution]
+     attribution 은 라이선스 표기라 절대 가리면 안 된다. 390px 에서 두 줄로
+     접혀 52px 를 차지하므로 그만큼 띄운다. */
+  :root { --left-col: 0px; --mobile-bottom: 58px; }
+  #list, #detail, #asm, #hub { bottom: var(--mobile-bottom); }
+  /* 줌 버튼은 핀치로 대체하고 축척만 남긴다 */
+  .maplibregl-ctrl-bottom-left .maplibregl-ctrl-group { display: none; }
+  .maplibregl-ctrl-bottom-left { bottom: calc(var(--mobile-bottom) + 34vh + 8px); }
+  body.has-sheet .maplibregl-ctrl-bottom-left { display: none; }
+  #legend { bottom: calc(var(--mobile-bottom) + 34vh + 48px); }
   #legend .ramp { width: 116px; }
   #legend .ex { margin-top: 6px; padding-top: 5px; }
   .mobile-only { display: inline-flex; }

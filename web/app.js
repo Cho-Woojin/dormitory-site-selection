@@ -194,6 +194,7 @@ function renderDetail(id) {
   $("detailName").textContent = state.nameOf(id) || id;
   $("detail").hidden = false;
   if (!$("asm").hidden && !$("asmMode").checked) $("asm").hidden = true;
+  keepOneSheet("detail");
   syncPanelFlags();
 
   if (i === undefined) {
@@ -333,10 +334,29 @@ function asmToggle(id) {
 
 /* 패널 열림 상태를 body 클래스에 반영. 레이아웃(높이 제한)이 여기에 달려
    있는데 토글이 코드 다섯 군데에 흩어져 있어 한 경로가 빠지면 패널이 겹쳤다. */
+const NARROW = () => matchMedia("(max-width: 900px)").matches;
+
 function syncPanelFlags() {
-  document.body.classList.toggle("has-asm", !$("asm").hidden);
-  document.body.classList.toggle("has-detail", !$("detail").hidden);
-  document.body.classList.toggle("has-hub", !$("hub").hidden);
+  const b = document.body;
+  b.classList.toggle("has-asm", !$("asm").hidden);
+  b.classList.toggle("has-detail", !$("detail").hidden);
+  b.classList.toggle("has-hub", !$("hub").hidden);
+  b.classList.toggle("has-sheet",
+    NARROW() && (!$("asm").hidden || !$("detail").hidden || !$("hub").hidden));
+  // 범례는 좌측 컬럼 옆에 붙어 있다. 컬럼이 비면 왼쪽 끝으로 옮긴다 —
+  // 고정 오프셋이면 파라미터를 접었을 때 화면 중앙에 떠 보인다.
+  b.classList.toggle("left-empty",
+    !NARROW() && b.classList.contains("params-off")
+    && $("detail").hidden && $("asm").hidden);
+}
+
+/* 좁은 화면에서 인스펙터 3종은 바텀시트 한 자리를 나눠 쓴다.
+   동시에 띄우면 서로를 덮어 스크롤과 초점이 엉킨다. */
+function keepOneSheet(open) {
+  if (!NARROW()) return;
+  for (const id of ["detail", "asm", "hub"]) {
+    if (id !== open && !$(id).hidden) $(id).hidden = true;
+  }
 }
 
 function paintAsm() {
@@ -358,6 +378,7 @@ function renderAsm() {
     return;
   }
   $("asm").hidden = false;
+  keepOneSheet("asm");
   syncPanelFlags();
 
   const D = state.D;
@@ -603,6 +624,7 @@ function renderHub() {
     return;
   }
   $("hub").hidden = false;
+  keepOneSheet("hub");
   syncPanelFlags();
   const D = state.D;
 
@@ -649,7 +671,8 @@ function renderHub() {
        이격을 줄이거나 거점 수를 낮추세요.</div>`
     : "";
 
-  el.innerHTML = rows + shortNote + `
+  el.innerHTML = rows;
+  $("hubTot").innerHTML = shortNote + `
     <div class="tot">
       <div class="big">${rooms.toLocaleString()}실 · ${(cost / 1e8).toFixed(0)}억</div>
       <dl class="kv" style="margin-top:7px">
@@ -1232,10 +1255,12 @@ function wireUI() {
   const setParams = (open) => {
     document.body.classList.toggle("params-off", !open);
     $("paramsBtn").setAttribute("aria-expanded", String(open));
+    syncPanelFlags();   // 범례 위치가 좌측 컬럼 점유에 달려 있다
     try { localStorage.setItem("dss-params", open ? "1" : "0"); } catch {}
   };
   const toggleParams = () => setParams(document.body.classList.contains("params-off"));
   $("paramsBtn").addEventListener("click", toggleParams);
+  addEventListener("resize", syncPanelFlags);
   $("paramsClose").addEventListener("click", () => setParams(false));
   let savedParams = null;
   try { savedParams = localStorage.getItem("dss-params"); } catch {}

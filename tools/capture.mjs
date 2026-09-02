@@ -233,7 +233,9 @@ await shot("17-hub", {
         return [lo / a, la / a];
       });
       const b = pts.reduce((acc, p) => acc.extend(p), new maplibregl.LngLatBounds(pts[0], pts[0]));
-      window.__map.fitBounds(b, { padding: { top: 110, bottom: 130, left: 400, right: 700 }, duration: 0 });
+      // 거점 패널이 우측 컬럼으로 옮겨졌다(right:12, 310px).
+      // 좌: 파라미터 314 + 여유, 우: 패널 334 + 여유
+      window.__map.fitBounds(b, { padding: { top: 110, bottom: 140, left: 360, right: 380 }, duration: 0 });
       return s.sites.length;
     });
     if (n !== 5) throw new Error(`캡처 실패: 거점 ${n}/5 곳`);
