@@ -198,6 +198,24 @@ await shot("16-assembly", {
   },
 });
 
+// 18 출처·방법론 패널 (읽는 법 + 임대료 지수)
+await shot("18-about", {
+  w: 1440, h: 980, center: SEOUL, zoom: 11.05, settle: 8000,
+  setup: async (pg) => {
+    await pg.click("#aboutBtn");
+    await pg.waitForTimeout(800);
+  },
+});
+
+// 19 자치구 선택 시 그 구로 이동 + 적용 임대료
+await shot("19-district-rent", {
+  center: SEOUL, zoom: 11.05, settle: 6000,
+  setup: async (pg) => {
+    await pg.selectOption("#sggSel", "11680");
+    await pg.waitForTimeout(6000);
+  },
+});
+
 // 17 거점 네트워크 (성동구). 합필 1곳을 고정하고 이격 1,500m 로 자동 보완한다.
 // 합필은 16 과 같은 경로로 담는다. state.asm 을 직접 넣으면 도형이 근사값이 되어
 // 같은 합필인데 16 과 수치가 어긋난다(4.27% vs 4.30%).

@@ -325,7 +325,26 @@ def export_aux(cfg, groups):
                        columns=["price_ref_date", "price_source"], ignore_geometry=True)
     valid = gp[gp["price_source"].eq("AL_D151_20260526")]
     dates = valid["price_ref_date"].astype(str).value_counts()
-    price_vintage = " / ".join(f"{d} {n:,}필지" for d, n in dates.items())
+    # 출처 줄에 들어가므로 짧게. 대표 공시일자 + 나머지 건수.
+    main_d, main_n = dates.index[0], int(dates.iloc[0])
+    rest = int(dates.iloc[1:].sum())
+    price_vintage = (f"공시일자 {main_d}"
+                     + (f" (분할·합병 수시공시 {rest:,}필지는 별도)" if rest else ""))
+
+    # 임대료 지수 요약. 사용자가 고른 자치구에서 기준값이 얼마가 되는지
+    # 화면에 바로 보여 주려면 필요하다.
+    rent_base = cfg["region"].get("rent_index_base", cfg["region"]["districts"][0]["code"])
+    rm = json.loads((INTERIM / "rent_market.json").read_text(encoding="utf-8"))
+    rent_by_sgg = {k: round(v["index"], 3) for k, v in rm["by_sgg"].items()}
+    rent_dong_span = {}
+    for key, v in rm["by_dong"].items():
+        code = key.split("|")[0]
+        lo, hi = rent_dong_span.get(code, (v["index"], v["index"]))
+        rent_dong_span[code] = (min(lo, v["index"]), max(hi, v["index"]))
+    rent_dong_span = {k: [round(a, 3), round(b, 3)] for k, (a, b) in rent_dong_span.items()}
+    assert rent_base in rent_by_sgg, f"기준 자치구 {rent_base} 지수가 없다"
+    assert abs(rent_by_sgg[rent_base] - 1.0) < 1e-6, \
+        f"기준 자치구 지수가 1.0 이 아니다: {rent_by_sgg[rent_base]}"
 
     # 웹이 점수를 재계산하려면 파라미터 기본값과 코드표가 필요하다
     P, F, S, T, R = (cfg["profitability"], cfg["filters"], cfg["solar"],
@@ -363,9 +382,19 @@ def export_aux(cfg, groups):
             "W_ROAD_UNKNOWN": 256, "W_ZONE2": 512, "W_SUBDIVIDED": 1024,
             "W_INDUSTRIAL": 2048,
         },
+        # 기준 자치구는 params 가 정한다. districts[0] 을 쓰면 목록을 정렬하는
+        # 것만으로 기준이 바뀐다 (실제로 성북구 → 종로구가 됐다).
         "rent_index": {
             "enabled": bool(cfg["profitability"].get("use_rent_index", False)),
-            "base_district": cfg["region"]["districts"][0]["code"],
+            "base_district": rent_base,
+            "base_district_name": next(
+                (d["name"] for d in cfg["region"]["districts"] if d["code"] == rent_base),
+                rent_base),
+            "n_transactions": int(rm["n_transactions"]),
+            "n_dong": len(rm["by_dong"]),
+            "years": rm.get("years", []),
+            "by_sgg": rent_by_sgg,          # 화면에서 "이 구의 적용 임대료" 를 보여 준다
+            "dong_span": rent_dong_span,    # 자치구 안 법정동 지수 범위
             "note": "필지별 임대료 = monthly_rent_per_room × ri",
         },
         "hubs": {
@@ -384,7 +413,7 @@ def export_aux(cfg, groups):
         "tiles_min_zoom": cfg["tiles"]["min_zoom"],
         "data_vintage": {
             "필지": "2026-05-13 (AL_D194 토지특성정보)",
-            "개별공시지가": f"AL_D151 · 공시일자 {price_vintage}",
+            "개별공시지가": f"AL_D151 · {price_vintage}",
             "건물": "2026-08-09 (AL_D010)",
             "조례": "서울시 도시계획조례 시행 2026-07-13",
         },

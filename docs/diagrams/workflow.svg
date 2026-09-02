@@ -1,0 +1,363 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1680 1188" width="1680" height="1188">
+<title>임대형기숙사 적합 필지 탐색 — 알고리즘 워크플로</title>
+<style>
+  .f { font-family: Pretendard, "Apple SD Gothic Neo", "Noto Sans KR", -apple-system, "Helvetica Neue", sans-serif; }
+  .m { font-family: "SF Mono", "JetBrains Mono", ui-monospace, Menlo, monospace; }
+  text { fill: #0b0b0b; }
+  .eyebrow { font-size: 10px; font-weight: 600; letter-spacing: .16em; fill: #7c7b76; }
+  .h1   { font-size: 32px; font-weight: 700; letter-spacing: -.01em; }
+  .sub  { font-size: 13px; fill: #52514e; }
+  .stat { font-size: 21px; font-weight: 700; }
+  .statl{ font-size: 9.5px; letter-spacing: .08em; fill: #7c7b76; }
+  .zone { font-size: 11.5px; font-weight: 700; letter-spacing: .12em; fill: #7c7b76; }
+  .st   { font-size: 14px; font-weight: 700; }
+  .n    { font-size: 10px; font-weight: 700; fill: #ffffff; }
+  .k    { font-size: 11px; font-weight: 600; }
+  .t    { font-size: 10.5px; fill: #52514e; }
+  .mu   { font-size: 9.8px; fill: #7c7b76; }
+  .num  { font-size: 10.5px; font-weight: 700; }
+  .fm   { font-size: 10px; fill: #1c5cab; }
+  .warn { font-size: 9.5px; fill: #7a4d00; }
+  .acc  { fill: #1c5cab; }
+  .box  { fill: #ffffff; stroke: #dcdcd8; stroke-width: 1; }
+  .hl   { fill: #f5f9ff; stroke: #2a78d6; stroke-width: 1.4; }
+  .rule { stroke: #dcdcd8; stroke-width: 1; fill: none; }
+  .flow { stroke: #0b0b0b; stroke-width: 1.6; fill: none; }
+  .flowl{ stroke: #7c7b76; stroke-width: 1.2; fill: none; stroke-dasharray: 4 3; }
+</style>
+<defs>
+  <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+    <path d="M0,0 L10,5 L0,10 z" fill="#0b0b0b"/>
+  </marker>
+  <marker id="al" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+    <path d="M0,0 L10,5 L0,10 z" fill="#7c7b76"/>
+  </marker>
+</defs>
+
+<rect width="1680" height="1188" fill="#ffffff"/>
+<g class="f">
+
+<!-- ══ HEADER ══ -->
+<text class="eyebrow" x="56" y="44">ALGORITHMIC SITE SELECTION · RENTAL DORMITORY HOUSING · SEOUL</text>
+<text class="h1" x="56" y="78">임대형기숙사 적합 필지 탐색 — 알고리즘 워크플로</text>
+<text class="sub" x="56" y="102">개별공시지가 대비 사업성 · 일조환경 · 역세권을 가중합하지 않고 오차범위 계층으로 정렬한다</text>
+
+<text class="stat" x="1354" y="72" text-anchor="end">898,800</text>
+<text class="statl" x="1354" y="90" text-anchor="end">전체 필지 · 25개 자치구</text>
+<text class="stat" x="1500" y="72" text-anchor="end">133,304</text>
+<text class="statl" x="1500" y="90" text-anchor="end">적격 후보</text>
+<text class="stat acc" x="1624" y="72" text-anchor="end">250 ms</text>
+<text class="statl" x="1624" y="90" text-anchor="end">브라우저 전체 재계산</text>
+<line class="rule" x1="56" y1="120" x2="1624" y2="120"/>
+
+<!-- ══ ZONE 1 LABEL ══ -->
+<rect x="56" y="142" width="9" height="9" fill="#0b0b0b"/>
+<text class="zone" x="74" y="151">전처리 — PYTHON · GEOPANDAS · 1회 실행</text>
+
+<!-- ══ ① 원천 데이터 ══ -->
+<rect class="box" x="56" y="194" width="286" height="318" rx="6"/>
+<circle cx="76" cy="216" r="9" fill="#0b0b0b"/><text class="n" x="76" y="219.5" text-anchor="middle">1</text>
+<text class="st" x="93" y="221">원천 데이터</text>
+<line class="rule" x1="72" y1="234" x2="326" y2="234"/>
+<text class="k" x="72" y="258">토지특성정보 AL_D194</text>
+<text class="mu" x="72" y="274">25개 자치구 898,800 필지 · 2026.05.13</text>
+<text class="k" x="72" y="304">GIS건물통합정보 AL_D010</text>
+<text class="mu" x="72" y="320">서울 695,761동 · 높이 A16 / 층수 A26 · 2026.08.09</text>
+<text class="k" x="72" y="350">개별공시지가 AL_D151</text>
+<text class="mu" x="72" y="366">조인율 100% · 공시 2026.04.30</text>
+<text class="k" x="72" y="396">전월세 실거래</text>
+<text class="mu" x="72" y="412">107만 건 → 법정동 임대료 지수 0.51~2.12</text>
+<text class="k" x="72" y="442">서울시 도시계획조례</text>
+<text class="mu" x="72" y="458">용적률·건폐율표 · 시행 2026.07.13</text>
+<line class="rule" x1="72" y1="476" x2="326" y2="476"/>
+<text class="mu" x="72" y="494">전부 무료 공개 데이터 · 유료 서비스 의존 0</text>
+
+<path class="flow" d="M342,353 L370,353" marker-end="url(#a)"/>
+
+<!-- ══ ② 필지 마스터 ══ -->
+<rect class="box" x="376" y="194" width="286" height="318" rx="6"/>
+<circle cx="396" cy="216" r="9" fill="#0b0b0b"/><text class="n" x="396" y="219.5" text-anchor="middle">2</text>
+<text class="st" x="413" y="221">필지 마스터</text>
+<line class="rule" x1="392" y1="234" x2="646" y2="234"/>
+<text class="t" x="392" y="258">PNU 19자리 · 중복 0 · 시군구 일치</text>
+<text class="t" x="392" y="278">EPSG:5186 — 거리·면적은 미터 좌표계에서</text>
+<text class="t" x="392" y="306">용도지역 → 용적률 · 건폐율 (조례표)</text>
+<text class="mu" x="404" y="322">상업지역은 주거용 400% 상한으로 클램프</text>
+<text class="mu" x="404" y="336">2025 한시완화 2종 250% / 3종 300% 반영</text>
+<text class="t" x="392" y="364">실현계수 = 0.90 × 형상(A22) × 경사(A20)</text>
+<text class="mu" x="404" y="380">상수를 쓰지 않는다 — 실측 중위 0.83 (0.57~0.90)</text>
+<text class="t" x="392" y="408">건물 높이 3단계 폴백</text>
+<text class="mu" x="404" y="424">실측 A16 → 층수 × 3.25m → 바닥면적 구간 추정</text>
+<rect x="392" y="446" width="254" height="30" rx="5" fill="#eaeae7"/>
+<text class="num" x="519" y="465" text-anchor="middle">parcels.gpkg · 898,800 행</text>
+<text class="mu" x="392" y="494">조인율을 매 단계 출력한다 — 결측을 말없이 버리지 않는다</text>
+
+<path class="flow" d="M662,353 L690,353" marker-end="url(#a)"/>
+
+<!-- ══ ③ 하드 필터 ══ -->
+<rect class="box" x="696" y="194" width="286" height="318" rx="6"/>
+<circle cx="716" cy="216" r="9" fill="#0b0b0b"/><text class="n" x="716" y="219.5" text-anchor="middle">3</text>
+<text class="st" x="733" y="221">하드 필터 → 후보</text>
+<line class="rule" x1="712" y1="234" x2="966" y2="234"/>
+<text class="mu" x="712" y="252">점수를 깎지 않는다. 법적으로 못 짓는 땅은 후보에서 뺀다.</text>
+
+<text class="t" x="712" y="280">전체</text>
+<text class="num" x="966" y="280" text-anchor="end">898,800</text>
+<rect x="712" y="286" width="254" height="5" fill="#c4c4be"/>
+
+<text class="t" x="712" y="315">F6  지목 적격</text>
+<text class="num" x="966" y="315" text-anchor="end">667,954</text>
+<rect x="712" y="321" width="189" height="5" fill="#c4c4be"/>
+
+<text class="t" x="712" y="350">F1  용도지역 공동주택 가능</text>
+<text class="num" x="966" y="350" text-anchor="end">649,612</text>
+<rect x="712" y="356" width="184" height="5" fill="#c4c4be"/>
+
+<text class="t" x="712" y="385">F3  토지이용상황 적격</text>
+<text class="num" x="966" y="385" text-anchor="end">590,953</text>
+<rect x="712" y="391" width="167" height="5" fill="#c4c4be"/>
+
+<text class="t" x="712" y="420">F4  접도 · 공시지가</text>
+<text class="num" x="966" y="420" text-anchor="end">495,445</text>
+<rect x="712" y="426" width="140" height="5" fill="#c4c4be"/>
+
+<text class="k acc" x="712" y="455">F5  20실 이상 규모</text>
+<text class="num acc" x="966" y="455" text-anchor="end">133,304</text>
+<rect x="712" y="461" width="38" height="5" fill="#2a78d6"/>
+
+<line class="rule" x1="712" y1="480" x2="966" y2="480"/>
+<text class="mu" x="712" y="497">20실 요건 하나가 전체의 73%를 걸러낸다 — 소필지 저층주거지</text>
+
+<path class="flow" d="M982,353 L1010,353" marker-end="url(#a)"/>
+
+<!-- ══ ④ 지표 3종 ══ -->
+<rect class="box" x="1016" y="194" width="286" height="318" rx="6"/>
+<circle cx="1036" cy="216" r="9" fill="#0b0b0b"/><text class="n" x="1036" y="219.5" text-anchor="middle">4</text>
+<text class="st" x="1053" y="221">지표 3종 — 병렬</text>
+<line class="rule" x1="1032" y1="234" x2="1286" y2="234"/>
+
+<rect x="1032" y="248" width="3" height="52" fill="#2a78d6"/>
+<text class="k" x="1044" y="260">S₁ 사업성</text>
+<text class="fm m" x="1044" y="276">NOI ÷ 순투자금 (총사업비 − 보증금)</text>
+<text class="mu" x="1044" y="291">면적 × 용적률 × 실현계수 → 연면적 → 실 수 → 임대수입</text>
+
+<rect x="1032" y="312" width="3" height="66" fill="#2a78d6"/>
+<text class="k" x="1044" y="324">S₂ 일조환경</text>
+<text class="fm m" x="1044" y="340">θ = atan( (인접건물높이 − 기준) ÷ 수평거리 )</text>
+<text class="mu" x="1044" y="355">남측 135°~225° 를 15° 씩 7섹터 · 반경 50m 최대앙각</text>
+<text class="mu" x="1044" y="369">동지 정오 태양고도 28.97° 기준 · 남측 접도 보너스</text>
+
+<rect x="1032" y="390" width="3" height="52" fill="#2a78d6"/>
+<text class="k" x="1044" y="402">S₃ 역세권 등급</text>
+<text class="fm m" x="1044" y="418">A ≤250 · B ≤500 · C ≤750 · D ≤1,000m · E</text>
+<text class="mu" x="1044" y="433">계단식 — 같은 등급 안에서는 동급으로 본다</text>
+
+<line class="rule" x1="1032" y1="456" x2="1286" y2="456"/>
+<text class="t" x="1032" y="474">세 지표는 서로 반대를 가리킨다 — 상관 r = −0.16</text>
+<text class="mu" x="1032" y="490">역에 가까울수록 땅값이 비싸고 건물이 빽빽하다.</text>
+<text class="mu" x="1032" y="503">각자 독립적인 정보이므로 가중 평균으로 뭉개면 안 된다.</text>
+
+<path class="flow" d="M1302,353 L1330,353" marker-end="url(#a)"/>
+
+<!-- ══ ⑤ 계층 정렬 ══ -->
+<rect class="box" x="1336" y="194" width="288" height="318" rx="6"/>
+<circle cx="1356" cy="216" r="9" fill="#0b0b0b"/><text class="n" x="1356" y="219.5" text-anchor="middle">5</text>
+<text class="st" x="1373" y="221">오차범위 계층 정렬</text>
+<line class="rule" x1="1352" y1="234" x2="1608" y2="234"/>
+
+<text class="k" x="1352" y="258">1순위   사업성 S₁</text>
+<path class="rule" d="M1366,264 L1366,278 L1378,278"/>
+<text class="mu" x="1384" y="282">오차범위 tol₁ = 5%p 안에서 동급 취급</text>
+<text class="k" x="1382" y="306">2순위   일조 S₂</text>
+<path class="rule" d="M1396,312 L1396,326 L1408,326"/>
+<text class="mu" x="1414" y="330">오차범위 tol₂ = 10%p 안에서 동급 취급</text>
+<text class="k" x="1412" y="354">3순위   역세권 등급 S₃</text>
+<path class="rule" d="M1426,360 L1426,374 L1438,374"/>
+<text class="mu" x="1444" y="378">동급이면 S₁ 원값으로 최종 타이브레이크</text>
+
+<rect x="1352" y="394" width="256" height="44" rx="5" fill="#eaeae7"/>
+<text class="fm m" x="1364" y="411">band = floor( (100 − 백분위) ÷ tol )</text>
+<text class="fm m" x="1364" y="428">정렬키 = band₁↑ · band₂↑ · 등급↑ · S₁↓</text>
+
+<text class="mu" x="1352" y="458">tol 자체가 사용자가 조정하는 핵심 파라미터다.</text>
+<text class="t" x="1352" y="478">tol₁ 0 → 200개  ·  5 → 165개  ·  20 → 51개</text>
+<text class="mu" x="1352" y="494">상위 200 중 순수 사업성 순위와 겹치는 수.</text>
+<text class="mu" x="1352" y="507">키울수록 일조·역세권이 순위를 지배한다.</text>
+
+<path class="flow" d="M1480,512 L1480,550" marker-end="url(#a)"/>
+
+<!-- ══ ⑥ 산출물 (다리) ══ -->
+<rect x="56" y="556" width="1568" height="128" rx="8" fill="#f4f4f2" stroke="#c4c4be" stroke-width="1"/>
+<circle cx="76" cy="586" r="9" fill="#2a78d6"/><text class="n" x="76" y="589.5" text-anchor="middle">6</text>
+<text class="st" x="93" y="591">산출물 — 점수를 미리 계산해서 굽지 않는다</text>
+<text class="t" x="76" y="614">정규화된 raw 지표값만 타일과 경량 바이너리에 싣고, 최종 점수는 브라우저가 계산한다.</text>
+<text class="t" x="76" y="631">점수를 구우면 파라미터 슬라이더가 동작하지 않는다. GitHub Pages · 백엔드 0 · 과금 지점 0.</text>
+<text class="mu" x="76" y="662">검증 — scripts/07_verify_tiles.py · tools/verify_ui.mjs · 한 항목이라도 실패하면 종료코드 1</text>
+
+<rect class="box" x="700" y="576" width="222" height="88" rx="5"/>
+<text class="k" x="714" y="598">parcels.pmtiles × 3</text>
+<text class="mu" x="714" y="616">231 MB · z11–15 · 89.9만 필지</text>
+<text class="mu" x="714" y="630">HTTP Range 요청 — 타일 서버 불필요</text>
+<text class="mu" x="714" y="648">git 파일당 100MB 한도로 3분할</text>
+
+<rect class="box" x="934" y="576" width="222" height="88" rx="5"/>
+<text class="k" x="948" y="598">scoring.bin</text>
+<text class="mu" x="948" y="616">23.6 MB → gzip 8.8 MB</text>
+<text class="mu" x="948" y="630">후보군 481,335 필지 raw 값</text>
+<text class="mu" x="948" y="648">열 우선 · 최소 dtype · 파싱 비용 0</text>
+
+<rect class="box" x="1168" y="576" width="222" height="88" rx="5"/>
+<text class="k" x="1182" y="598">adjacency.json</text>
+<text class="mu" x="1182" y="616">706,796 연접쌍 · 10.6 MB</text>
+<text class="mu" x="1182" y="630">합필 모드를 켤 때만 받는다</text>
+<text class="mu" x="1182" y="648">부팅 비용에 얹지 않기 위해 분리</text>
+
+<rect class="box" x="1402" y="576" width="222" height="88" rx="5"/>
+<text class="k" x="1416" y="598">meta.json · scoring.json</text>
+<text class="mu" x="1416" y="616">파라미터 기본값 · 스케일</text>
+<text class="mu" x="1416" y="630">플래그 비트 · 데이터 기준일</text>
+<text class="mu" x="1416" y="648">PNU · 용도지역 · 법정동 이름표</text>
+
+<!-- 다리 → 브라우저 -->
+<path class="flow" d="M140,684 L140,746" marker-end="url(#a)"/>
+
+<!-- ══ ZONE 2 LABEL ══ -->
+<rect x="56" y="705" width="9" height="9" fill="#2a78d6"/>
+<text class="zone" x="74" y="714">탐색 — 브라우저 · 실시간 · 재빌드 없음</text>
+
+<!-- 피드백 루프 -->
+<path class="flow" d="M1161,752 L1161,736 L260,736 L260,746" marker-end="url(#a)"/>
+<rect x="576" y="726" width="368" height="18" fill="#ffffff"/>
+<text class="mu" x="760" y="740" text-anchor="middle">파라미터를 바꾸면 재빌드 없이 전체가 다시 정렬된다</text>
+
+<!-- ══ ⑦ 파라미터 ══ -->
+<rect class="box" x="56" y="752" width="290" height="176" rx="6"/>
+<circle cx="76" cy="774" r="9" fill="#0b0b0b"/><text class="n" x="76" y="777.5" text-anchor="middle">7</text>
+<text class="st" x="93" y="779">파라미터 13종</text>
+<line class="rule" x1="72" y1="792" x2="330" y2="792"/>
+<text class="t" x="72" y="812">tol₁  사업성 오차범위</text><text class="num" x="330" y="812" text-anchor="end">5 %p</text>
+<text class="t" x="72" y="828">tol₂  일조 오차범위</text><text class="num" x="330" y="828" text-anchor="end">10 %p</text>
+<text class="t" x="72" y="844">기준 월임대료</text><text class="num" x="330" y="844" text-anchor="end">85 만원</text>
+<text class="t" x="72" y="860">실당 보증금</text><text class="num" x="330" y="860" text-anchor="end">500 만원</text>
+<text class="t" x="72" y="876">단위공사비</text><text class="num" x="330" y="876" text-anchor="end">250 만원/㎡</text>
+<text class="t" x="72" y="892">실당 전용면적 · 최소 실 수</text><text class="num" x="330" y="892" text-anchor="end">16㎡ · 20실</text>
+<text class="mu" x="72" y="914">외 공시지가 배율 · 공실률 · 운영비율 · 수익률 분모 …</text>
+
+<path class="flow" d="M346,840 L370,840" marker-end="url(#a)"/>
+
+<!-- ══ ⑧ 대상지 범위 지정 (강조) ══ -->
+<rect class="hl" x="376" y="752" width="290" height="176" rx="6"/>
+<circle cx="396" cy="774" r="9" fill="#2a78d6"/><text class="n" x="396" y="777.5" text-anchor="middle">8</text>
+<text class="st acc" x="413" y="779">대상지 범위 지정</text>
+<line x1="392" y1="792" x2="650" y2="792" stroke="#bcd4f2" stroke-width="1"/>
+<text class="k" x="392" y="814">자치구 선택</text>
+<text class="mu" x="392" y="830">25개 중 하나 또는 전체</text>
+<text class="mu" x="392" y="844">임대료 지수 덕분에 섞어 봐도 왜곡되지 않는다</text>
+<text class="k" x="392" y="870">지도에 폴리곤 그리기</text>
+<text class="mu" x="392" y="886">클릭으로 꼭짓점 · 더블클릭 또는 Enter 로 닫기</text>
+<text class="mu" x="392" y="900">폴리곤에 걸치는 필지도 포함한다 (교차 판정)</text>
+<text class="mu" x="392" y="920">범위는 후보 판정에 함께 들어간다 — 별도 단계가 아니다</text>
+<g>
+  <rect x="580" y="806" width="14" height="14" fill="#e6e6e2"/><rect x="597" y="806" width="14" height="14" fill="#e6e6e2"/>
+  <rect x="614" y="806" width="14" height="14" fill="#e6e6e2"/><rect x="631" y="806" width="14" height="14" fill="#e6e6e2"/>
+  <rect x="580" y="823" width="14" height="14" fill="#e6e6e2"/><rect x="597" y="823" width="14" height="14" fill="#e6e6e2"/>
+  <rect x="614" y="823" width="14" height="14" fill="#e6e6e2"/><rect x="631" y="823" width="14" height="14" fill="#e6e6e2"/>
+  <rect x="580" y="840" width="14" height="14" fill="#e6e6e2"/><rect x="597" y="840" width="14" height="14" fill="#e6e6e2"/>
+  <rect x="614" y="840" width="14" height="14" fill="#e6e6e2"/><rect x="631" y="840" width="14" height="14" fill="#e6e6e2"/>
+  <path d="M588,812 L634,804 L646,838 L610,858 L582,836 Z" fill="#2a78d6" fill-opacity="0.16"
+        stroke="#2a78d6" stroke-width="1.3" stroke-dasharray="4 3"/>
+  <circle cx="588" cy="812" r="2.6" fill="#2a78d6"/><circle cx="634" cy="804" r="2.6" fill="#2a78d6"/>
+  <circle cx="646" cy="838" r="2.6" fill="#2a78d6"/><circle cx="610" cy="858" r="2.6" fill="#2a78d6"/>
+  <circle cx="582" cy="836" r="2.6" fill="#2a78d6"/>
+</g>
+
+<path class="flow" d="M666,840 L690,840" marker-end="url(#a)"/>
+
+<!-- ══ ⑨ 후보 판정 → 계층 정렬 ══ -->
+<rect class="box" x="696" y="752" width="290" height="176" rx="6"/>
+<circle cx="716" cy="774" r="9" fill="#0b0b0b"/><text class="n" x="716" y="777.5" text-anchor="middle">9</text>
+<text class="st" x="733" y="779">후보 판정 → 계층 정렬</text>
+<line class="rule" x1="712" y1="792" x2="970" y2="792"/>
+<text class="t" x="712" y="812">하드필터 F1·F3·F4·F5·F6 재적용</text>
+<text class="mu" x="712" y="828">최소 실 수는 고정값이 아니라 슬라이더 값을 쓴다</text>
+<text class="mu" x="712" y="842">자치구 · 폴리곤 범위와 교집합</text>
+<text class="t" x="712" y="866">후보 백분위 → 밴드 → 사전식 정렬</text>
+<text class="fm m" x="712" y="882">band₁↑ · band₂↑ · 등급↑ · S₁↓</text>
+<rect x="712" y="892" width="258" height="26" rx="5" fill="#eaeae7"/>
+<text class="num" x="841" y="909" text-anchor="middle">후보 13.3만 전체 재계산 250 ms</text>
+
+<path class="flow" d="M986,840 L1010,840" marker-end="url(#a)"/>
+
+<!-- ══ ⑩ 지도 · 목록 ══ -->
+<rect class="box" x="1016" y="752" width="290" height="176" rx="6"/>
+<circle cx="1036" cy="774" r="9" fill="#0b0b0b"/><text class="n" x="1036" y="777.5" text-anchor="middle">10</text>
+<text class="st" x="1053" y="779">지도 채색 · 후보 목록</text>
+<line class="rule" x1="1032" y1="792" x2="1290" y2="792"/>
+<text class="t" x="1032" y="812">순위 → feature-state 로 필지 농도</text>
+<text class="mu" x="1032" y="828">1위가 가장 진하게 · √ 스케일로 상위 구간을 넓힌다</text>
+<text class="t" x="1032" y="852">목록 ↔ 지도 선택 동기화</text>
+<text class="mu" x="1032" y="868">필지 클릭 → 지표 · 사업 구조 · 제외 사유 · 경고 뱃지</text>
+<text class="mu" x="1032" y="882">제외 필지 보기 토글 — 왜 빠졌는지 사유와 함께</text>
+<line class="rule" x1="1032" y1="896" x2="1290" y2="896"/>
+<text class="mu" x="1032" y="914">여기서 필지를 담아 합필 · 거점으로 넘어간다</text>
+
+<path class="flow" d="M1306,840 L1330,840" marker-end="url(#a)"/>
+
+<!-- ══ ⑬ 대상지 확정 ══ -->
+<rect class="box" x="1336" y="752" width="288" height="176" rx="6"/>
+<circle cx="1356" cy="774" r="9" fill="#0b0b0b"/><text class="n" x="1356" y="777.5" text-anchor="middle">13</text>
+<text class="st" x="1373" y="779">대상지 확정 → 설계</text>
+<line class="rule" x1="1352" y1="792" x2="1608" y2="792"/>
+<text class="t" x="1352" y="812">단일 필지 · 합필 묶음 · 거점 네트워크</text>
+<text class="mu" x="1352" y="828">면적 · 적용용적률 · 실 수 · 총사업비 · 수익률 확정</text>
+<rect x="1352" y="842" width="256" height="66" rx="5" fill="#eaeae7"/>
+<text class="k" x="1364" y="862">성수동2가 299 외 4필지</text>
+<text class="mu" x="1364" y="878">2,932㎡ · 389실 · 연접 확인 · 준공업</text>
+<text class="mu" x="1364" y="896">가상 순위 643위 상당 (S₁ 4.27%)</text>
+<text class="mu" x="1352" y="922">수치는 기본 파라미터 기준이며 가정을 포함한다</text>
+
+<!-- ⑩ → 분기 버스 -->
+<path class="flow" d="M1090,928 L1090,942 L890,942 L890,952" marker-end="url(#a)"/>
+<path class="flow" d="M1230,928 L1230,952" marker-end="url(#a)"/>
+<!-- ⑨ → 합필 (규모 미달 필지) -->
+<path class="flowl" d="M790,928 L790,952" marker-end="url(#al)"/>
+<text class="mu" x="700" y="946" text-anchor="end">규모 미달 362,141필지도 담긴다</text>
+
+<!-- ══ ⑪ 합필 (강조) ══ -->
+<rect class="hl" x="696" y="958" width="290" height="146" rx="6"/>
+<circle cx="716" cy="980" r="9" fill="#2a78d6"/><text class="n" x="716" y="983.5" text-anchor="middle">11</text>
+<text class="st acc" x="733" y="985">합필 — 인접 필지 통합</text>
+<line x1="712" y1="998" x2="970" y2="998" stroke="#bcd4f2" stroke-width="1"/>
+<text class="t" x="712" y="1018">지도에서 필지를 눌러 담는다</text>
+<text class="t" x="712" y="1036">연접 판정 706,796쌍 — 끊기면 덩어리 수를 표시</text>
+<text class="mu" x="712" y="1050">도로로 갈린 필지는 합필 불가 · 별동으로 안내</text>
+<text class="t" x="712" y="1068">실현계수를 합필 실형상에서 다시 구한다</text>
+<text class="mu" x="712" y="1082">면적 ÷ 최소회전외접사각형 · 볼록껍질 + 회전 캘리퍼스</text>
+<rect x="712" y="1088" width="258" height="0" fill="none"/>
+<text class="k acc" x="712" y="1100">→ 가상 순위 「643위 상당」 로 후보 사이에 삽입</text>
+
+<!-- ══ ⑫ 거점 네트워크 ══ -->
+<rect class="box" x="1016" y="958" width="290" height="146" rx="6"/>
+<circle cx="1036" cy="980" r="9" fill="#0b0b0b"/><text class="n" x="1036" y="983.5" text-anchor="middle">12</text>
+<text class="st" x="1053" y="985">거점 네트워크</text>
+<line class="rule" x1="1032" y1="998" x2="1290" y2="998"/>
+<text class="t" x="1032" y="1018">여러 필지를 하나의 사업으로 묶는다</text>
+<text class="t" x="1032" y="1036">순위 상위부터 탐욕 선택 + 최소 이격거리 제약</text>
+<text class="mu" x="1032" y="1050">0 · 1,000 · 1,500 · 2,000m — 못 채우면 이유를 표시</text>
+<text class="t" x="1032" y="1068">순위 상위를 그대로 뽑으면 안 된다</text>
+<text class="mu" x="1032" y="1082">상위 30 중 21개가 100m 이내 · 최근접 38m</text>
+<text class="mu" x="1032" y="1100">S₁ 에는 「200m 옆에 같은 사업이 있다」는 정보가 없다</text>
+
+<!-- 분기 → 확정 -->
+<path class="flow" d="M841,1104 L841,1122 L1480,1122 L1480,934" marker-end="url(#a)"/>
+<path class="flow" d="M1161,1104 L1161,1122"/>
+
+<!-- ══ FOOTER ══ -->
+<line class="rule" x1="56" y1="1140" x2="1624" y2="1140"/>
+<text class="mu" x="56" y="1158">검증 — 브라우저 점수 엔진이 Python 과 상위 200 집합·순서 일치 · 합필 S₁ 오차 ≤0.1%p · 레이아웃 32조합 전수 · 부팅 예산 600ms</text>
+<text class="mu" x="56" y="1173">데이터 — 토지특성정보 2026.05.13 · GIS건물통합정보 2026.08.09 · 개별공시지가 2026.04.30 · 서울시 도시계획조례 시행 2026.07.13</text>
+<text class="warn" x="1624" y="1158" text-anchor="end">⚠  가정 포함 — 단위공사비 250만원/㎡ · 철거비 10만원/㎡ · 전용률 0.65 · 실당 16㎡ · 공실률 0.05 · 실거래배율 1.5 · 실현계수 base 0.90 은</text>
+<text class="warn" x="1624" y="1173" text-anchor="end">아직 검증되지 않은 가정이다. 실제 견적·시세로 보정하기 전까지 결과를 투자 판단에 그대로 쓸 수 없다.</text>
+
+</g>
+</svg>

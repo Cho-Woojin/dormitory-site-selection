@@ -121,6 +121,35 @@ function readParams() {
   };
 }
 
+/* 슬라이더 값이 "지금 보고 있는 지역" 에서 얼마가 되는지 보여 준다.
+   서울 전역이므로 기준값 하나만 적어 두면 읽는 사람이 자기 지역으로
+   환산해야 한다. 지수는 필지마다 곱해지는 실제 값이다 (D-024). */
+function rentHint() {
+  const el = $("rentHint");
+  if (!el || !state.meta) return;
+  const R = state.meta.rent_index || {};
+  const base = +$("rent").value;                        // 만원
+  const code = $("sggSel") ? $("sggSel").value : "0";
+  const won = (v) => `${Math.round(v)}만원`;
+  const baseNm = R.base_district_name || "기준";
+  if (code !== "0" && R.by_sgg && R.by_sgg[code]) {
+    const idx = R.by_sgg[code];
+    const nm = (state.meta.districts.find((d) => d.code === code) || {}).name || "";
+    const span = (R.dong_span || {})[code];
+    const dong = span
+      ? ` · 법정동별 ${won(base * span[0])}~${won(base * span[1])}`
+      : "";
+    el.innerHTML = `<b>${nm} 적용 ${won(base * idx)}/월</b> (지수 ${idx.toFixed(2)})${dong}
+      <br>슬라이더는 <b>${baseNm} 기준값</b>이고, 필지마다 법정동 실거래 지수가 곱해집니다.`;
+  } else {
+    const vals = Object.values(R.by_sgg || {});
+    const lo = vals.length ? Math.min(...vals) : 1, hi = vals.length ? Math.max(...vals) : 1;
+    el.innerHTML = `<b>${baseNm} 기준값</b>입니다. 필지마다 법정동 실거래 지수가 곱해집니다
+      (자치구 기준 ${won(base * lo)}~${won(base * hi)}).
+      <br>자치구를 고르면 그 지역 적용액이 표시됩니다.`;
+  }
+}
+
 function syncLabels() {
   $("tol1v").textContent = $("tol1").value;
   $("tol2v").textContent = $("tol2").value;
@@ -133,6 +162,7 @@ function syncLabels() {
   $("hubNv").textContent = $("hubN").value;
   $("hubDv").textContent = (+$("hubD").value).toLocaleString();
   for (const g of ["A", "B", "C", "D"]) $(`g${g}v`).textContent = $(`g${g}`).value;
+  rentHint();
 }
 
 /* 등급 임계는 단조 증가해야 한다. 하나를 올리면 뒤를 밀어낸다. */
@@ -962,6 +992,25 @@ async function boot() {
   // 날짜가 여러 개이고, 손으로 적은 값은 데이터가 바뀌어도 따라오지 않는다.
   const pv = (meta.data_vintage || {})["개별공시지가"];
   if (pv) $("srcPrice").textContent = `국토교통부 · ${pv}`;
+  // 출처·방법론 패널도 데이터에서 채운다. 손으로 적으면 범위가 바뀔 때 안 따라온다.
+  const R = meta.rent_index || {};
+  $("aboutScope").textContent =
+    `${(meta.districts || []).length}개 자치구 ${(meta.parcel_count || 0).toLocaleString()} 필지`;
+  $("aboutRentBase").textContent = `${R.base_district_name || "기준"} 기준`;
+  if (R.n_transactions) {
+    $("aboutRentN").textContent =
+      `법정동 ${R.n_dong}개 · 전월세 실거래 ${R.n_transactions.toLocaleString()}건`;
+  }
+  const ent = Object.entries(R.by_sgg || {});
+  if (ent.length) {
+    const nameOf = (c) => (meta.districts.find((d) => d.code === c) || {}).name || c;
+    ent.sort((a, b) => b[1] - a[1]);
+    const [hiC, hi] = ent[0], [loC, lo] = ent[ent.length - 1];
+    $("aboutRentSpan").innerHTML =
+      `자치구 지수는 <b>${nameOf(loC)} ${lo.toFixed(2)}</b> 에서 `
+      + `<b>${nameOf(hiC)} ${hi.toFixed(2)}</b> 까지 벌어집니다. 같은 기준값이라도 `
+      + `적용 임대료가 <b>${(hi / lo).toFixed(1)}배</b> 차이 납니다.`;
+  }
   // 자치구 이름을 전부 나열하면 25개에서 헤더가 넘친다. 개수로 줄인다.
   const nd = (meta.districts || []).length;
   $("hdrSub").textContent =
@@ -1231,6 +1280,7 @@ function wireUI() {
     };
   };
   $("sggSel").addEventListener("change", () => {
+    rentHint();
     const code = $("sggSel").value;
     if (!state.bndByCode) return;
     const b = code === "0" ? state.bndAll : state.bndByCode[code];

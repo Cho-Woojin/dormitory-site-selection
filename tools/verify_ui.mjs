@@ -662,8 +662,23 @@ ok("자료 없는 필지는 목록 밖", pr.gone.missing === true,
   `공시지가 0 필지 ${priceRef.missing_count}건`);
 // 출처 표기가 하드코딩이면 데이터가 바뀌어도 따라오지 않는다
 const srcTxt = await pg.evaluate(() => document.getElementById("srcPrice")?.textContent || "");
-ok("출처 표기가 실제 공시일자를 담음",
-  Object.keys(priceRef.dates).every((d) => srcTxt.includes(d)), srcTxt);
+// 대표 공시일자가 표기에 있어야 한다 (나머지는 건수로 요약)
+const mainDate = Object.entries(priceRef.dates).sort((a, b) => b[1] - a[1])[0][0];
+ok("출처 표기가 실제 공시일자를 담음", srcTxt.includes(mainDate), srcTxt);
+
+// 출처·방법론 패널이 데이터에서 채워지는가 (손으로 적으면 안 따라온다)
+const about = await pg.evaluate(async () => {
+  document.getElementById("aboutBtn").click();
+  await new Promise((r) => setTimeout(r, 400));
+  const t = document.getElementById("about").innerText;
+  document.getElementById("aboutClose").click();
+  return t;
+});
+ok("방법론 패널에 현재 규모 표시",
+  about.includes(SUM.parcels.toLocaleString("en-US")) && about.includes(`${SUM.districts}개 자치구`),
+  `${SUM.districts}개 자치구 ${SUM.parcels.toLocaleString()} 필지`);
+ok("방법론 패널에 임대료 지수 범위 표시", /자치구 지수는[\s\S]*배 차이/.test(about));
+ok("옛 2개 구 문구 없음", !/성북구·성동구|79,282|자치구를 섞은 순위/.test(about));
 await pg.evaluate(() => document.getElementById("detailClose")?.click());
 await pg.waitForTimeout(300);
 
