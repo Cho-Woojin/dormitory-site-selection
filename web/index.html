@@ -12,6 +12,7 @@
 <!-- 데이터는 app.js 가 실행돼야 요청이 나간다. HTML 파싱 시점에 미리 건다
      (실측: scoring.json 시작이 700ms → 230ms). -->
 <link rel="preload" as="fetch" href="data/scoring.json" type="application/json" crossorigin>
+<link rel="preload" as="fetch" href="data/scoring.bin" crossorigin>
 <link rel="preload" as="fetch" href="data/meta.json" type="application/json" crossorigin>
 <link rel="modulepreload" href="app.js">
 <link rel="modulepreload" href="score.js">

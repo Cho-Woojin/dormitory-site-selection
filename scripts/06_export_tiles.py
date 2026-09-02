@@ -186,8 +186,32 @@ def export_scoring_table(cfg):
     assert max((max(v) for v in adjacency if v), default=-1) < len(g), "인접 인덱스 범위 초과"
     print(f"  연접 쌍 {npairs:,}")
 
+    # 수치 표는 바이너리로 뺀다. JSON 으로 두면 55.9MB 를 브라우저가 파싱해야 하는데,
+    # 그 시간 동안 메인 스레드가 막혀 지도 렌더링과 다툰다(라이브 실측 44~78초).
+    # 열 우선 + 열별 최소 dtype + 좌표는 델타 → 24MB, gzip 8.9MB, 파싱 비용 0.
+    COLS = ["a", "f", "r", "p", "d", "s", "t", "x", "tf", "ri", "cx", "cy", "lon", "lat", "pd"]
+    DELTA = {"cx", "cy", "lon", "lat"}      # 인접 필지끼리 값이 붙어 있어 잘 줄어든다
+    arr = np.asarray(rows, dtype=np.int64)
+    DT = [("u1", np.uint8), ("i2", np.int16), ("i4", np.int32), ("f8", np.int64)]
+    schema, chunks = [], []
+    for i, c in enumerate(COLS):
+        col = arr[:, i]
+        if c in DELTA:
+            # prepend=0 이어야 한다. col[0] 을 넣으면 첫 값이 0 이 되어
+            # 누적합이 기준점을 잃는다 (좌표가 통째로 어긋났다).
+            col = np.diff(col, prepend=0)
+        for code, dt in DT:
+            info = np.iinfo(dt)
+            if col.min() >= info.min and col.max() <= info.max:
+                break
+        chunks.append(col.astype(dt).tobytes())
+        schema.append({"c": c, "t": code, "d": c in DELTA})
+    binpath = WEB_DATA / "scoring.bin"
+    binpath.write_bytes(b"".join(chunks))
+
     payload = {
-        "cols": ["a", "f", "r", "p", "d", "s", "t", "x", "tf", "ri", "cx", "cy", "lon", "lat", "pd"],
+        "cols": COLS,
+        "bin": {"file": "scoring.bin", "n": len(g), "schema": schema},
         "price_dates": price_dates,     # pd 열이 가리키는 공시일자
         # 필지명·자치구코드는 싣지 않는다. PNU 로 정확히 복원된다
         # (89.9만 건 전수 대조 불일치 0). 이름을 그대로 실으면 24MB,
@@ -201,11 +225,11 @@ def export_scoring_table(cfg):
             .groupby("_b")["_d"].first()),
         "ids": g["pnu"].tolist(),
         "z": g["zone1"].map(ZONE_CODES).fillna(0).astype(int).tolist(),
-        "rows": rows,
     }
     path = WEB_DATA / "scoring.json"
     path.write_text(json.dumps(payload, separators=(",", ":")), encoding="utf-8")
-    print(f"  scoring.json      {len(g):,}행  {path.stat().st_size / 1e6:.2f}MB")
+    print(f"  scoring.json      {len(g):,}행  {path.stat().st_size / 1e6:.2f}MB (id·이름표)")
+    print(f"  scoring.bin       수치 {len(COLS)}열  {binpath.stat().st_size / 1e6:.2f}MB")
 
     # 연접 관계는 합필 모드에서만 쓴다. 첫 화면에 11MB 를 지울 이유가 없으므로
     # 별도 파일로 빼고 합필 모드를 켤 때 받는다. rows 와 같은 인덱스를 쓴다.

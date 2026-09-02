@@ -881,6 +881,7 @@ async function boot() {
   // 네 파일을 한꺼번에 건다. 경계·역을 뒤로 미루면 그만큼 직렬로 늘어난다.
   const pMeta = fetch("data/meta.json").then((r) => r.json());
   const pScoring = fetch("data/scoring.json").then((r) => r.json());
+  const pBin = fetch("data/scoring.bin").then((r) => r.arrayBuffer());
   const pBnd = fetch("data/boundary.geojson").then((r) => r.json());
   const pStn = fetch("data/stations.geojson").then((r) => r.json());
   // 지도 생성은 동기 WebGL 초기화라 메인 스레드를 길게 잡는다(콜드 1.5초).
@@ -1117,9 +1118,9 @@ async function boot() {
     `<div class="empty">후보를 계산하는 중…<br><span class="num">898,800 필지</span></div>`;
   await new Promise((r) => requestAnimationFrame(() => r()));   // 한 프레임 그리고
 
-  const scoring = await pScoring;
+  const [scoring, bin] = await Promise.all([pScoring, pBin]);
   step("후보 표 대기");
-  state.D = prepare(scoring, meta.scale);
+  state.D = prepare(scoring, meta.scale, bin);
   state.idx = new Map(state.D.ids.map((v, i) => [v, i]));
   step("표 준비");
 

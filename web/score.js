@@ -34,11 +34,35 @@ export const FLAG_REASONS = [
  * scoring.json 을 타입드 배열로 펼친다. 27,857행을 매번 객체로 다루면
  * 슬라이더가 버벅인다.
  */
-export function prepare(scoring, scale) {
+/* 수치 표는 열 우선 바이너리다. JSON 이면 55.9MB 를 파싱하느라 메인 스레드가
+   막혀 지도 렌더링과 다툰다(라이브 실측 44~78초). 여기서는 버퍼를 잘라
+   타입배열로 보는 것뿐이라 사실상 공짜다. */
+function decodeBin(buf, schema, n) {
+  const TYPES = { u1: Uint8Array, i2: Int16Array, i4: Int32Array, f8: BigInt64Array };
+  const out = {};
+  let off = 0;
+  for (const col of schema) {
+    const T = TYPES[col.t];
+    const bytes = n * T.BYTES_PER_ELEMENT;
+    // slice() 로 복사한다. 열 경계가 정렬돼 있지 않으면 뷰를 못 만든다.
+    const raw = new T(buf.slice(off, off + bytes));
+    off += bytes;
+    const a = new Float64Array(n);
+    if (col.d) {                       // 델타 → 누적합
+      let acc = 0;
+      for (let i = 0; i < n; i++) { acc += Number(raw[i]); a[i] = acc; }
+    } else {
+      for (let i = 0; i < n; i++) a[i] = Number(raw[i]);
+    }
+    out[col.c] = a;
+  }
+  return out;
+}
+
+export function prepare(scoring, scale, buf) {
   const n = scoring.ids.length;
-  const col = (k) => scoring.cols.indexOf(k);
-  const [ia, iff, ir, ip, id_, is, it, ix, itf, iri, icx, icy, ilon, ilat, ipd] =
-    ["a", "f", "r", "p", "d", "s", "t", "x", "tf", "ri", "cx", "cy", "lon", "lat", "pd"].map(col);
+  const B = decodeBin(buf, scoring.bin.schema, n);
+  if (scoring.bin.n !== n) throw new Error(`scoring.bin 행 수 불일치 ${scoring.bin.n} vs ${n}`);
 
   /* 필지명은 싣지 않고 PNU 에서 복원한다 (89.9만 건 전수 대조 불일치 0).
      그대로 실으면 24MB, 법정동 이름표는 467개 18KB 다.
@@ -79,22 +103,21 @@ export function prepare(scoring, scale) {
     flags: new Int32Array(n),
   };
   for (let i = 0; i < n; i++) {
-    const r = scoring.rows[i];
-    out.area[i] = r[ia] / scale.a;
-    out.far[i] = r[iff];
-    out.rf[i] = r[ir] / scale.r;
-    out.price[i] = r[ip] / scale.p;
-    out.demo[i] = r[id_] / scale.d;
-    out.sun[i] = r[is] / scale.s;
-    out.dist[i] = r[it] / scale.t;
-    out.flags[i] = r[ix];
-    out.tf[i] = itf >= 0 ? r[itf] / scale.tf : 1;
-    out.ri[i] = iri >= 0 ? r[iri] / scale.ri : 1;   // 임대료 지역지수 (D-024)
-    out.cx[i] = icx >= 0 ? r[icx] : 0;              // 중심점 (EPSG:5186 미터)
-    out.cy[i] = icy >= 0 ? r[icy] : 0;
-    out.lon[i] = ilon >= 0 ? r[ilon] / 1e6 : 0;     // 같은 점의 WGS84 (지도 마커용)
-    out.lat[i] = ilat >= 0 ? r[ilat] / 1e6 : 0;
-    out.priceDate[i] = ipd >= 0 ? r[ipd] : -1;  // 공시일자 (필지마다 다를 수 있다)
+    out.area[i] = B.a[i] / scale.a;
+    out.far[i] = B.f[i];
+    out.rf[i] = B.r[i] / scale.r;
+    out.price[i] = B.p[i] / scale.p;
+    out.demo[i] = B.d[i] / scale.d;
+    out.sun[i] = B.s[i] / scale.s;
+    out.dist[i] = B.t[i] / scale.t;
+    out.flags[i] = B.x[i];
+    out.tf[i] = B.tf[i] / scale.tf;
+    out.ri[i] = B.ri[i] / scale.ri;      // 임대료 지역지수 (D-024)
+    out.cx[i] = B.cx[i];                 // 중심점 (EPSG:5186 미터)
+    out.cy[i] = B.cy[i];
+    out.lon[i] = B.lon[i] / 1e6;         // 같은 점의 WGS84 (지도 마커용)
+    out.lat[i] = B.lat[i] / 1e6;
+    out.priceDate[i] = B.pd[i];          // 공시일자 (필지마다 다를 수 있다)
   }
   // 전체 이름 배열은 쓰는 쪽이 있을 때만 만든다 (테스트·캡처가 findIndex 를 쓴다).
   Object.defineProperty(out, "names", {
