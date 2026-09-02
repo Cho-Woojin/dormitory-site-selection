@@ -34,15 +34,33 @@ jobs:
         run: |
           set -e
           for f in index.html app.js score.js style.css \
-                   data/parcels.pmtiles data/scoring.json \
+                   data/scoring.json data/adjacency.json \
                    data/meta.json data/stations.geojson data/boundary.geojson; do
             test -s "web/$f" || { echo "::error::web/$f 누락 또는 빈 파일"; exit 1; }
           done
-          echo "PMTiles $(du -h web/data/parcels.pmtiles | cut -f1)"
-          # 점수를 미리 구워 넣지 않았는지 확인 (D-003)
-          if grep -q '"rank"' web/data/meta.json; then
-            echo "::error::meta.json 에 순위가 포함됐다"; exit 1
-          fi
+          # 타일 파일명은 meta.json 이 정한다. 목록을 여기 적어 두면
+          # 그룹 수가 바뀔 때 따라오지 않는다 (실제로 배포가 깨졌다).
+          python3 - <<'PY'
+          import json, os, sys
+          m = json.load(open("web/data/meta.json"))
+          groups = m.get("tile_groups") or []
+          if not groups:
+              sys.exit("::error::meta.json 에 tile_groups 가 없다")
+          for g in groups:
+              p = os.path.join("web/data", g["file"])
+              sz = os.path.getsize(p) if os.path.exists(p) else 0
+              if sz == 0:
+                  sys.exit(f"::error::{p} 누락 또는 빈 파일")
+              if sz > 100 * 1024 ** 2:
+                  sys.exit(f"::error::{p} 가 100MB 를 넘는다 ({sz/1e6:.1f}MB)")
+              print(f"{g['file']}  {sz/1e6:.1f}MB  자치구 {len(g['districts'])}개")
+          codes = {c for g in groups for c in g["districts"]}
+          want = {d["code"] for d in m["districts"]}
+          if codes != want:
+              sys.exit(f"::error::타일 그룹이 자치구를 다 못 담았다 {len(codes)}/{len(want)}")
+          if "rank" in json.dumps(m):
+              sys.exit("::error::meta.json 에 순위가 포함됐다")   # D-003
+          PY
 
       - uses: actions/configure-pages@v5
 
