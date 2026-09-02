@@ -40,13 +40,27 @@ export function prepare(scoring, scale) {
   const [ia, iff, ir, ip, id_, is, it, ix, itf, iri, icx, icy, ilon, ilat, ipd] =
     ["a", "f", "r", "p", "d", "s", "t", "x", "tf", "ri", "cx", "cy", "lon", "lat", "pd"].map(col);
 
+  /* 필지명은 싣지 않고 PNU 에서 복원한다 (89.9만 건 전수 대조 불일치 0).
+     그대로 실으면 24MB, 법정동 이름표는 467개 18KB 다.
+       PNU[0:5]=자치구  [0:10]=법정동  [11:15]=본번  [15:19]=부번
+     495k 개를 미리 만들면 메모리·시간이 아깝다. 목록은 60행만 그리므로
+     낱개 접근은 nameAt(), 전체 배열은 처음 쓸 때 만든다. */
+  const bjd = scoring.bjd_names || {};
+  const nameAt = (i) => {
+    const p = scoring.ids[i];
+    const bon = +p.slice(11, 15), bu = +p.slice(15, 19);
+    return `${bjd[p.slice(0, 10)] || ""} ${bu ? `${bon}-${bu}` : bon}`;
+  };
+  const sgg = new Int32Array(n);
+  for (let i = 0; i < n; i++) sgg[i] = +scoring.ids[i].slice(0, 5);
+
   const out = {
     n,
     ids: scoring.ids,
-    names: scoring.nm,
+    nameAt,
     zones: scoring.z,
-    sgg: scoring.g,
-    adj: scoring.adj || [],
+    sgg,
+    adj: scoring.adj || [],     // 합필 모드에서 adjacency.json 을 받아 채운다
     tf: new Float64Array(n),
     ri: new Float64Array(n),
     cx: new Float64Array(n),
@@ -82,6 +96,16 @@ export function prepare(scoring, scale) {
     out.lat[i] = ilat >= 0 ? r[ilat] / 1e6 : 0;
     out.priceDate[i] = ipd >= 0 ? r[ipd] : -1;  // 공시일자 (필지마다 다를 수 있다)
   }
+  // 전체 이름 배열은 쓰는 쪽이 있을 때만 만든다 (테스트·캡처가 findIndex 를 쓴다).
+  Object.defineProperty(out, "names", {
+    configurable: true,
+    get() {
+      const a = new Array(n);
+      for (let i = 0; i < n; i++) a[i] = nameAt(i);
+      Object.defineProperty(out, "names", { value: a, configurable: true });
+      return a;
+    },
+  });
   return out;
 }
 

@@ -31,17 +31,25 @@ def check(label, ok, detail=""):
         fails.append(label)
 
 
-def decode_max_zoom(cfg):
+def decode_max_zoom(cfg, meta):
+    """타일은 그룹별 파일로 나뉘어 있다. 전부 디코드해 합친다."""
     z = str(cfg["tiles"]["max_zoom"])
-    pm = ROOT / cfg["tiles"]["output"]
-    r = subprocess.run(
-        ["tippecanoe-decode", "-z", z, "-Z", z, str(pm)],
-        capture_output=True, text=True,
-    )
-    if r.returncode != 0:
-        raise SystemExit(f"tippecanoe-decode 실패:\n{r.stderr[-800:]}")
     props = {}
-    for line in r.stdout.splitlines():
+    for grp in meta["tile_groups"]:
+        pm = WEB_DATA / grp["file"]
+        r = subprocess.run(
+            ["tippecanoe-decode", "-z", z, "-Z", z, str(pm)],
+            capture_output=True, text=True,
+        )
+        if r.returncode != 0:
+            raise SystemExit(f"tippecanoe-decode 실패 ({grp['file']}):\n{r.stderr[-800:]}")
+        _collect(r.stdout, props)
+        print(f"  {grp['file']}  누적 {len(props):,}")
+    return pd.DataFrame.from_dict(props, orient="index")
+
+
+def _collect(stdout, props):
+    for line in stdout.splitlines():
         line = line.strip().rstrip(",")
         if '"properties"' not in line:
             continue
@@ -52,7 +60,6 @@ def decode_max_zoom(cfg):
         p = f.get("properties", {})
         if "id" in p:
             props[p["id"]] = p
-    return pd.DataFrame.from_dict(props, orient="index")
 
 
 def main():
@@ -66,14 +73,23 @@ def main():
 
     print("═" * 62)
     print("타일 검증")
-    t = decode_max_zoom(cfg)
+    t = decode_max_zoom(cfg, meta)
 
     print("\n1) 완전성")
-    check("최대줌 필지 수", len(t) == len(src), f"{len(t):,}/{len(src):,}")
+    # 지켜야 할 불변식은 "적격 표(scoring.json)의 필지가 전부 타일에 있는가" 다.
+    # 타일에는 없어도 되는 필지가 있다 — 면적 0~3㎡ 자투리는 z15 격자에서
+    # 사라지는데, 후보가 될 수 없으므로 적격 표에서도 뺀다.
+    elig = set(json.loads((WEB_DATA / "scoring.json").read_text(encoding="utf-8"))["ids"])
+    have = set(t.index)
+    check("적격 필지 100% 타일 존재", elig <= have,
+          f"{len(elig & have):,}/{len(elig):,}")
+    dropped = len(src) - len(t)
+    check("타일 누락은 자투리뿐 (<0.05%)", dropped / len(src) < 0.0005,
+          f"{dropped:,}/{len(src):,}")
 
     j = t.join(src, how="inner", rsuffix="_py")
     # 빈 조인은 모든 "불일치 0" 검사를 공허하게 통과시킨다. 먼저 조인부터 확인한다.
-    check("타일↔원본 조인", len(j) == len(src), f"{len(j):,}/{len(src):,}")
+    check("타일↔원본 조인", len(j) >= len(src) - dropped, f"{len(j):,}/{len(src):,}")
     if not len(j):
         print("\n❌ 조인이 비었다. 타일 id 와 원본 id 형식을 확인할 것")
         sys.exit(1)
@@ -145,13 +161,21 @@ def main():
     check("상위200 순서", order == 200, f"{order}/200")
 
     print("\n5) 산출물")
-    for f in ["parcels.pmtiles", "stations.geojson", "boundary.geojson", "meta.json"]:
+    for f in ([g["file"] for g in meta["tile_groups"]]
+              + ["scoring.json", "adjacency.json", "stations.geojson",
+                 "boundary.geojson", "meta.json"]):
         p = WEB_DATA / f
         check(f, p.exists(), f"{p.stat().st_size / 1e6:.1f}MB" if p.exists() else "없음")
-    pm = WEB_DATA / "parcels.pmtiles"
     lim = cfg["tiles"]["max_size_mb"]
-    check("타일 용량 상한", pm.stat().st_size / 1e6 <= lim,
-          f"{pm.stat().st_size / 1e6:.1f}/{lim}MB")
+    biggest = max((WEB_DATA / g["file"]).stat().st_size for g in meta["tile_groups"]) / 1e6
+    check("타일 파일당 상한", biggest <= lim, f"최대 {biggest:.1f}/{lim}MB")
+    # git 은 파일당 100MB 를 넘기면 아예 받지 않는다. 상한보다 이쪽이 절대 기준이다.
+    check("git 100MB 한도", biggest < 100, f"{biggest:.1f}MB")
+    # 자치구가 빠지면 그 구는 지도에 아예 안 나온다
+    covered = {c for g in meta["tile_groups"] for c in g["districts"]}
+    want = {d["code"] for d in cfg["region"]["districts"]}
+    check("타일 그룹이 전 자치구 포함", covered == want,
+          f"{len(covered)}/{len(want)}")
 
     print("\n" + "═" * 62)
     if fails:

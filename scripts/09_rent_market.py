@@ -113,11 +113,14 @@ def main():
     # ── 자치구 ─────────────────────────────────────────────
     by_sgg = df.groupby("CGG_CD")["per_sqm"].agg(["size", "median"])
     by_sgg.columns = ["n", "per_sqm"]
-    base_code = districts[0]["code"]
+    # 기준은 params 가 정한다. districts 순서에 의존하면 목록을 정렬하는 것만으로
+    # 임대료 수준 보정(85만원 = 성북구)이 조용히 어긋난다.
+    base_code = cfg["region"].get("rent_index_base", districts[0]["code"])
     base = float(by_sgg.loc[base_code, "per_sqm"])
     by_sgg["index"] = by_sgg["per_sqm"] / base
 
-    print(f"\n=== 자치구별 (기준: {districts[0]['name']} = 1.00) ===")
+    base_nm = next((d["name"] for d in districts if d["code"] == base_code), base_code)
+    print(f"\n=== 자치구별 (기준: {base_nm} = 1.00) ===")
     name = {d["code"]: d["name"] for d in districts}
     for code, r in by_sgg.iterrows():
         print(f"  {name.get(code, code):<6} 표본 {int(r['n']):>6,}  "
@@ -145,6 +148,7 @@ def main():
                    "conversion_rate": CONVERSION_RATE},
         "n_transactions": int(len(df)),
         "base_district": base_code,
+        "base_district_name": base_nm,
         "base_per_sqm_manwon": round(base, 4),
         "by_sgg": {str(c): {"n": int(r["n"]), "per_sqm": round(r["per_sqm"], 4),
                             "index": round(r["index"], 4)}

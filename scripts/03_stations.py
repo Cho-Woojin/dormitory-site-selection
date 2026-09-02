@@ -108,7 +108,10 @@ def main():
     nearest = nearest[~nearest.index.duplicated()]  # 동거리 동점 시 첫 역 채택
     g["stn_name"] = nearest["name"].values
     g["stn_line"] = nearest["line"].values
-    g["stn_dist_m"] = nearest["stn_dist_m"].values
+    # 타일은 거리를 ×100 정수로 싣는다. 원본을 그 정밀도로 확정해 두지 않으면
+    # 경계에 걸친 필지(예: 250.0024m)가 타일에서 250.00m 로 반올림되며
+    # 등급이 한 칸 어긋난다 (실측 16건). 저장 정밀도가 값의 정의다.
+    g["stn_dist_m"] = np.round(nearest["stn_dist_m"].values, 2)
 
     grades = cfg["transit"]["grades"]
     bounds = [grades["A"], grades["B"], grades["C"], grades["D"]]

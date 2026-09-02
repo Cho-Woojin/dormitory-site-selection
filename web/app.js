@@ -55,6 +55,42 @@ function priceRows(i) {
     + (date ? `<dt>공시일자</dt><dd style="color:var(--ink-2)">${date}</dd>` : "");
 }
 
+/* 타일은 여러 파일로 나뉘어 있다 (서울 전역 89.9만 필지는 한 파일에 못 담는다 —
+   git 파일당 100MB 한도). 소스가 N개여도 호출부는 하나처럼 쓴다. */
+const TG = {
+  groups: [],                 // meta.tile_groups
+  sggTo: new Map(),           // 자치구코드 → 그룹 인덱스
+  init(groups) {
+    this.groups = groups || [];
+    this.sggTo.clear();
+    this.groups.forEach((g, k) => g.districts.forEach((c) => this.sggTo.set(String(c), k)));
+  },
+  src(k) { return { source: `parcels${k}`, sourceLayer: "parcels" }; },
+  // PNU 앞 5자리가 자치구코드다. 어느 파일에 있는지 바로 안다.
+  srcOf(pnu) { return this.src(this.sggTo.get(String(pnu).slice(0, 5)) ?? 0); },
+  layers(base) { return this.groups.map((_, k) => `${base}-${k}`); },
+  all(base) { return this.groups.flatMap((_, k) => [`${base}-${k}`]); },
+};
+
+/** 모든 그룹 레이어에 같은 필터를 건다. */
+function setFilterAll(base, expr) {
+  for (const l of TG.layers(base)) {
+    if (state.map.getLayer(l)) state.map.setFilter(l, expr);
+  }
+}
+
+/** 모든 소스에서 필지를 찾는다. 어느 파일에 있는지 몰라도 된다. */
+function queryParcels(opts) {
+  const out = [];
+  for (let k = 0; k < TG.groups.length; k++) {
+    const src = TG.src(k);
+    if (!state.map.getSource(src.source)) continue;
+    out.push(...state.map.querySourceFeatures(src.source,
+      { sourceLayer: src.sourceLayer, ...opts }));
+  }
+  return out;
+}
+
 const state = {
   meta: null, D: null, idx: null, result: null,
   selected: null, map: null, painted: new Set(), zoneNames: null,
@@ -116,6 +152,9 @@ function enforceGradeOrder(changed) {
 
 /* ── 계산 + 지도 반영 ──────────────────────────────────── */
 function recompute() {
+  // 재계산 횟수. 자동 테스트가 "값이 아직 안 변했는데 멎어 보이는" 경합을
+  // 피하려면 시간이 아니라 이 신호를 기다려야 한다 (자치구 합이 실제로 어긋났다).
+  window.__recomputes = (window.__recomputes || 0) + 1;
   const P = readParams();
   const t0 = performance.now();
   const res = computeRanking(state.D, P, {
@@ -131,11 +170,11 @@ function recompute() {
 
   // 순위 → feature-state. 이전에 칠한 것 중 후보에서 빠진 것은 지운다.
   const map = state.map;
-  const src = { source: "parcels", sourceLayer: "parcels" };
   const next = new Set();
   for (let r = 0; r < n; r++) {
     const i = res.order[r];
     const id = state.D.ids[i];
+    const src = TG.srcOf(id);      // 타일이 나뉘어 있어 필지마다 소스가 다르다
     next.add(id);
     // 1위 -> 1.0(가장 진함), 꼴찌 -> 0.0.
     // sqrt 로 상위 구간을 넓혀 최상위 필지가 눈에 띄게 한다.
@@ -143,7 +182,7 @@ function recompute() {
     map.setFeatureState({ ...src, id }, { pct: Math.sqrt(1 - lin), cand: true });
   }
   for (const id of state.painted) {
-    if (!next.has(id)) map.setFeatureState({ ...src, id }, { pct: null, cand: false });
+    if (!next.has(id)) map.setFeatureState({ ...TG.srcOf(id), id }, { pct: null, cand: false });
   }
   state.painted = next;
 
@@ -271,14 +310,10 @@ function selectParcel(id, fly) {
     r.setAttribute("aria-selected", r.dataset.id === id ? "true" : "false"));
   const sel = document.querySelector(`#listBody .row[aria-selected="true"]`);
   if (sel) sel.scrollIntoView({ block: "nearest" });
-  for (const l of ["parcel-selected", "parcel-selected-casing"]) {
-    state.map.setFilter(l, ["==", ["get", "id"], id]);
-  }
+  for (const l of ["parcel-selected", "parcel-selected-casing"]) setFilterAll(l, ["==", ["get", "id"], id]);
   renderDetail(id);
   if (fly) {
-    const fs = state.map.querySourceFeatures("parcels", {
-      sourceLayer: "parcels", filter: ["==", ["get", "id"], id],
-    });
+    const fs = queryParcels({ filter: ["==", ["get", "id"], id] });
     if (fs.length) {
       const b = new maplibregl.LngLatBounds();
       const add = (c) => Array.isArray(c[0]) ? c.forEach(add) : b.extend(c);
@@ -299,9 +334,7 @@ function toMeters(coords, lat0, lon0) {
 /** 타일에서 필지 꼭짓점을 긁어 캐시한다. 나중에 화면 밖으로 나가도 계산할 수 있게. */
 function cacheGeom(id) {
   if (state.geomCache.has(id)) return;
-  const fs = state.map.querySourceFeatures("parcels", {
-    sourceLayer: "parcels", filter: ["==", ["get", "id"], id],
-  });
+  const fs = queryParcels({ filter: ["==", ["get", "id"], id] });
   const pts = [];
   const walk = (c) => (Array.isArray(c[0]) ? c.forEach(walk) : pts.push(c));
   fs.forEach((f) => walk(f.geometry.coordinates));
@@ -319,6 +352,20 @@ function fillMissingGeom() {
     if (state.geomCache.has(id)) added++;
   }
   if (added) renderAsm();
+}
+
+/* 연접 관계(11MB)는 합필 모드에서만 필요하다. 첫 화면에서 받지 않는다. */
+let adjPromise = null;
+function loadAdjacency() {
+  if (adjPromise) return adjPromise;
+  adjPromise = fetch("data/adjacency.json").then((r) => r.json()).then((j) => {
+    if (j.n !== state.D.n) {
+      throw new Error(`adjacency.json 행 수 불일치 ${j.n} vs ${state.D.n}`);
+    }
+    state.D.adj = j.adj;
+    return j.adj;
+  });
+  return adjPromise;
 }
 
 function asmToggle(id) {
@@ -361,8 +408,8 @@ function keepOneSheet(open) {
 
 function paintAsm() {
   const ids = state.asm.map((i) => state.D.ids[i]);
-  state.map.setFilter("parcel-asm", ["in", ["get", "id"], ["literal", ids]]);
-  state.map.setFilter("parcel-asm-line", ["in", ["get", "id"], ["literal", ids]]);
+  setFilterAll("parcel-asm", ["in", ["get", "id"], ["literal", ids]]);
+  setFilterAll("parcel-asm-line", ["in", ["get", "id"], ["literal", ids]]);
 }
 
 function renderAsm() {
@@ -573,7 +620,7 @@ function flyToSite(site) {
 function paintHubs() {
   const ids = state.sites.flatMap((s) => s.indices.map((i) => state.D.ids[i]));
   for (const l of ["parcel-hub", "parcel-hub-line"]) {
-    state.map.setFilter(l, ["in", ["get", "id"], ["literal", ids]]);
+    setFilterAll(l, ["in", ["get", "id"], ["literal", ids]]);
   }
   // 거점 번호 핀. 자치구 전체 축척에서 필지 폴리곤은 몇 픽셀이라 보이지 않는다.
   // 심볼 레이어는 basemap 글리프 폰트스택에 없는 이름을 쓰면 pbf 파싱이 깨지면서
@@ -728,7 +775,7 @@ function computeInArea(poly) {
     Math.max(b[2], p[0]), Math.max(b[3], p[1]),
   ], [Infinity, Infinity, -Infinity, -Infinity]);
 
-  const feats = state.map.querySourceFeatures("parcels", { sourceLayer: "parcels" });
+  const feats = queryParcels({});
   let seen = 0;
   for (const f of feats) {
     const id = f.properties?.id;
@@ -840,10 +887,17 @@ async function boot() {
   // 데이터를 기다린 뒤에 하면 그 시간이 그대로 더해지므로, 페치를 걸어 둔
   // 직후에 먼저 끝내 네트워크와 겹친다.
   setBoot("지도를 준비하는 중");
+  // meta 는 6KB 라 즉시 온다. 타일 그룹 구성을 알아야 소스를 선언할 수 있다.
+  const meta = await pMeta;
+  TG.init(meta.tile_groups);
   const proto = new pmtiles.Protocol();
   maplibregl.addProtocol("pmtiles", proto.tile);
-  const url = new URL("data/parcels.pmtiles", location.href).href;
-  proto.add(new pmtiles.PMTiles(url));
+  const tileSources = {};
+  TG.groups.forEach((g, k) => {
+    const u = new URL(`data/${g.file}`, location.href).href;
+    proto.add(new pmtiles.PMTiles(u));
+    tileSources[`parcels${k}`] = { type: "vector", url: "pmtiles://" + u, promoteId: "id" };
+  });
 
   const map = new maplibregl.Map({
     container: "map",
@@ -860,11 +914,11 @@ async function boot() {
           tileSize: 256, maxzoom: 19,
           attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
         },
-        parcels: { type: "vector", url: "pmtiles://" + url, promoteId: "id" },
+        ...tileSources,
       },
       layers: [{ id: "osm", type: "raster", source: "osm", paint: BASEMAP_PAINT() }],
     },
-    center: REGION_CENTER, zoom: 12.0, minZoom: 9.5, maxZoom: 18,
+    center: REGION_CENTER, zoom: 12.0, minZoom: meta.tiles_min_zoom ?? 10, maxZoom: 18,
     attributionControl: { compact: true },
   });
   state.map = map;
@@ -874,6 +928,7 @@ async function boot() {
   window.__asmToggle = asmToggle;   // 자동 테스트에서 합필 담기를 호출한다
   window.__renderAsm = renderAsm;
   window.__cacheGeom = cacheGeom;
+  window.__loadAdjacency = loadAdjacency;   // 합필 테스트에서 미리 받는다
   window.__selectParcel = selectParcel;   // 목록 밖 필지도 캡처·테스트에서 열 수 있게
   // 스타일 파싱 완료 신호. 지도를 만든 직후에 걸어야 이벤트를 놓치지 않는다.
   step("Map 생성자");
@@ -881,7 +936,7 @@ async function boot() {
   map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "bottom-left");
   map.addControl(new maplibregl.ScaleControl({ maxWidth: 96, unit: "metric" }), "bottom-left");
 
-  const [meta, scoring] = await Promise.all([pMeta, pScoring]);
+  const scoring = await pScoring;
   step("데이터 대기");
   state.meta = meta;
   state.D = prepare(scoring, meta.scale);
@@ -911,9 +966,11 @@ async function boot() {
   // 날짜가 여러 개이고, 손으로 적은 값은 데이터가 바뀌어도 따라오지 않는다.
   const pv = (meta.data_vintage || {})["개별공시지가"];
   if (pv) $("srcPrice").textContent = `국토교통부 · ${pv}`;
+  // 자치구 이름을 전부 나열하면 25개에서 헤더가 넘친다. 개수로 줄인다.
+  const nd = (meta.districts || []).length;
   $("hdrSub").textContent =
-    `${(meta.districts || []).map((x) => x.name).join(" · ")} `
-    + `${(meta.parcel_count || 0).toLocaleString()} 필지`;
+    (nd > 3 ? `서울 ${nd}개 자치구` : (meta.districts || []).map((x) => x.name).join(" · "))
+    + ` ${(meta.parcel_count || 0).toLocaleString()} 필지`;
   syncLabels();
 
   step("컨트롤 초기화");
@@ -932,65 +989,52 @@ async function boot() {
   RAMP.forEach((c, k) => rampExpr.push(k / (RAMP.length - 1), c));
   const isCand = ["boolean", ["feature-state", "cand"], false];
 
-  // 레이어는 하나만 쓴다. MapLibre 는 `filter` 안에서 feature-state 를 허용하지
-  // 않으므로(타일 파싱 시점에 평가) 후보/비후보 구분은 paint 로만 한다.
-  map.addLayer({
-    id: "parcel-fill", type: "fill", source: "parcels", "source-layer": "parcels",
-    paint: {
-      "fill-color": [
-        "case", isCand,
-        ["case", ["==", ["feature-state", "pct"], null], "#cde2fb", rampExpr],
-        "#b9b9b3",
-      ],
-      // 비후보는 기본 투명. "제외 필지 표시" 토글이 0.42 로 올린다.
-      "fill-opacity": fillOpacity(0),
-    },
-  });
-  map.addLayer({
-    id: "parcel-line", type: "line", source: "parcels", "source-layer": "parcels",
-    minzoom: 15,
-    paint: { "line-color": "#6b6b66", "line-width": 0.4, "line-opacity": 0.5 },
-  });
-  map.addLayer({
-    id: "parcel-hover", type: "line", source: "parcels", "source-layer": "parcels",
-    filter: ["==", ["get", "id"], ""],
-    paint: { "line-color": "#0b0b0b", "line-width": 1.6 },
-  });
-  // 선택 강조는 두 겹으로. 흰 케이싱이 없으면 짙은 필지 위에서 선이 묻힌다.
-  map.addLayer({
-    id: "parcel-hub", type: "fill", source: "parcels", "source-layer": "parcels",
-    filter: ["in", ["get", "id"], ["literal", []]],
-    paint: { "fill-color": "#0ca30c", "fill-opacity": 0.45 },
-  });
-  map.addLayer({
-    id: "parcel-hub-line", type: "line", source: "parcels", "source-layer": "parcels",
-    filter: ["in", ["get", "id"], ["literal", []]],
-    paint: { "line-color": "#0a7d0a", "line-width": 2 },
-  });
-  map.addLayer({
-    id: "parcel-asm", type: "fill", source: "parcels", "source-layer": "parcels",
-    filter: ["in", ["get", "id"], ["literal", []]],
-    paint: { "fill-color": "#eb6834", "fill-opacity": 0.42 },
-  });
-  map.addLayer({
-    id: "parcel-asm-line", type: "line", source: "parcels", "source-layer": "parcels",
-    filter: ["in", ["get", "id"], ["literal", []]],
-    paint: { "line-color": "#eb6834", "line-width": 1.8 },
-  });
-  map.addLayer({
-    id: "parcel-selected-casing", type: "line", source: "parcels", "source-layer": "parcels",
-    filter: ["==", ["get", "id"], ""],
-    paint: { "line-color": "#ffffff", "line-width": 6, "line-opacity": 0.9 },
-  });
-  map.addLayer({
-    id: "parcel-selected", type: "line", source: "parcels", "source-layer": "parcels",
-    filter: ["==", ["get", "id"], ""],
-    paint: { "line-color": "#eb6834", "line-width": 2.8 },
-  });
+  /* 레이어 정의는 하나만 쓴다. MapLibre 는 `filter` 안에서 feature-state 를
+     허용하지 않으므로(타일 파싱 시점에 평가) 후보/비후보 구분은 paint 로만 한다.
+     타일이 그룹별 파일로 나뉘어 있어 같은 정의를 소스마다 하나씩 붙인다. */
+  const PARCEL_LAYERS = [
+    { id: "parcel-fill", type: "fill", paint: {
+        "fill-color": [
+          "case", isCand,
+          ["case", ["==", ["feature-state", "pct"], null], "#cde2fb", rampExpr],
+          "#b9b9b3",
+        ],
+        // 비후보는 기본 투명. "제외 필지 표시" 토글이 0.42 로 올린다.
+        "fill-opacity": fillOpacity(0),
+      } },
+    { id: "parcel-line", type: "line", minzoom: 15,
+      paint: { "line-color": "#6b6b66", "line-width": 0.4, "line-opacity": 0.5 } },
+    { id: "parcel-hover", type: "line", filter: ["==", ["get", "id"], ""],
+      paint: { "line-color": "#0b0b0b", "line-width": 1.6 } },
+    { id: "parcel-hub", type: "fill", filter: ["in", ["get", "id"], ["literal", []]],
+      paint: { "fill-color": "#0ca30c", "fill-opacity": 0.45 } },
+    { id: "parcel-hub-line", type: "line", filter: ["in", ["get", "id"], ["literal", []]],
+      paint: { "line-color": "#0a7d0a", "line-width": 2 } },
+    { id: "parcel-asm", type: "fill", filter: ["in", ["get", "id"], ["literal", []]],
+      paint: { "fill-color": "#eb6834", "fill-opacity": 0.42 } },
+    { id: "parcel-asm-line", type: "line", filter: ["in", ["get", "id"], ["literal", []]],
+      paint: { "line-color": "#eb6834", "line-width": 1.8 } },
+    // 선택 강조는 두 겹으로. 흰 케이싱이 없으면 짙은 필지 위에서 선이 묻힌다.
+    { id: "parcel-selected-casing", type: "line", filter: ["==", ["get", "id"], ""],
+      paint: { "line-color": "#ffffff", "line-width": 6, "line-opacity": 0.9 } },
+    { id: "parcel-selected", type: "line", filter: ["==", ["get", "id"], ""],
+      paint: { "line-color": "#eb6834", "line-width": 2.8 } },
+  ];
+  // 순서가 중요하다: 채움 → 경계 → 강조. 그룹을 안쪽 루프에 두면
+  // 그룹 0 의 선택 강조가 그룹 1 의 채움에 덮인다.
+  for (const spec of PARCEL_LAYERS) {
+    TG.groups.forEach((_, k) => {
+      map.addLayer({ ...spec, id: `${spec.id}-${k}`,
+        source: `parcels${k}`, "source-layer": "parcels" });
+    });
+  }
 
   step("필지 레이어 추가");
   setBoot("경계와 역 정보를 불러오는 중");
   const [bnd, stn] = await Promise.all([pBnd, pStn]);
+  // 네트워크 대기와 실제 구성 작업을 나눠 잰다. 동기 WebGL 초기화가 메인
+  // 스레드를 잡고 있으면 페치가 끝나도 promise 가 안 풀려 대기 시간이 튄다.
+  step("경계·역 대기");
   // 자치구별 경계 bbox — 필터 시 지도 이동에 쓴다
   state.bndByCode = {};
   for (const f of bnd.features) {
@@ -1054,7 +1098,8 @@ async function boot() {
   // 이름을 못 찾아 리스트에 PNU 가 노출된다.
   state.nameOf = (id) => {
     const i = state.idx.get(id);
-    return i === undefined ? state.tileNames.get(id) : state.D.names[i];
+    // 낱개 접근은 nameAt(). 전체 배열을 만들면 495k 개 문자열이 생긴다.
+    return i === undefined ? state.tileNames.get(id) : state.D.nameAt(i);
   };
   state.zoneOf = (id) => {
     const i = state.idx.get(id);
@@ -1067,7 +1112,7 @@ async function boot() {
   $("legendRamp").style.background =
     `linear-gradient(90deg, ${RAMP.slice().reverse().join(",")})`;
 
-  step("경계·역");
+  step("경계·역 구성");
   wireUI();
   const ms = recompute();
   step("최초 계산");
@@ -1091,13 +1136,13 @@ async function boot() {
     const id = e.features[0]?.properties?.id;
     if (id && id !== hovered) {
       hovered = id;
-      map.setFilter("parcel-hover", ["==", ["get", "id"], id]);
+      setFilterAll("parcel-hover", ["==", ["get", "id"], id]);
       map.getCanvas().style.cursor = "pointer";
     }
   });
   map.on("mouseleave", "parcel-fill", () => {
     hovered = "";
-    map.setFilter("parcel-hover", ["==", ["get", "id"], ""]);
+    setFilterAll("parcel-hover", ["==", ["get", "id"], ""]);
     map.getCanvas().style.cursor = "";
   });
   map.on("click", (e) => {
@@ -1148,7 +1193,7 @@ function wireUI() {
   });
 
   $("showEx").addEventListener("change", (e) => {
-    state.map.setPaintProperty("parcel-fill", "fill-opacity",
+    for (const l of TG.layers("parcel-fill")) state.map.setPaintProperty(l, "fill-opacity",
       fillOpacity(e.target.checked ? 0.42 : 0));
   });
 
@@ -1204,6 +1249,12 @@ function wireUI() {
     } else {
       // 합필 모드에서는 상세 패널을 닫는다 (같은 자리)
       if (!$("detail").hidden) $("detailClose").click();
+      // 연접 관계는 여기서 처음 필요해진다
+      loadAdjacency().then(renderAsm).catch((err) => {
+        console.error(err);
+        $("asmBody").innerHTML =
+          `<div class="empty">연접 정보를 불러오지 못했습니다.<br>${err.message}</div>`;
+      });
       renderAsm();
     }
   });
@@ -1225,7 +1276,7 @@ function wireUI() {
     syncPanelFlags();
     state.selected = null;
     for (const l of ["parcel-selected", "parcel-selected-casing"]) {
-      state.map.setFilter(l, ["==", ["get", "id"], ""]);
+      setFilterAll(l, ["==", ["get", "id"], ""]);
     }
     document.querySelectorAll("#listBody .row").forEach((r) =>
       r.setAttribute("aria-selected", "false"));

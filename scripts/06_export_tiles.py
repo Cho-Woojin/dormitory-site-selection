@@ -83,11 +83,33 @@ def export_parcels(cfg):
     assert dup == 0, f"id 중복 {dup:,}건 — 웹이 필지를 구분하지 못한다"
 
     WEB_DATA.mkdir(parents=True, exist_ok=True)
-    path = INTERIM / "parcels_web.geojson"
-    out.to_file(path, driver="GeoJSON")
-    mb = path.stat().st_size / 1e6
-    print(f"  속성 {len(out.columns) - 1}개 → {path.name}  {mb:,.0f}MB")
-    return path
+
+    # 서울 전역(89.9만 필지)은 한 파일에 못 담는다. 실측 z11-15 221MB 로
+    # git 의 파일당 100MB 한도를 넘는다(단순화는 효과 없음 — 용량은 정점 수가
+    # 아니라 필지 수가 정한다). 자치구를 필지 수 기준으로 균등 분할한다.
+    ngroups = cfg["tiles"]["groups"]
+    by_sgg = out["g"].value_counts().sort_values(ascending=False)
+    load = [0] * ngroups
+    assign = {}
+    for code, n in by_sgg.items():          # 큰 구부터 가장 가벼운 그룹에
+        k = load.index(min(load))
+        assign[int(code)] = k
+        load[k] += int(n)
+    out["_grp"] = out["g"].astype(int).map(assign)
+
+    paths, groups = [], []
+    for k in range(ngroups):
+        sub = out[out["_grp"] == k].drop(columns=["_grp"])
+        path = INTERIM / f"parcels_web_g{k}.geojson"
+        sub.to_file(path, driver="GeoJSON")
+        codes = sorted(str(c) for c, v in assign.items() if v == k)
+        paths.append(path)
+        groups.append({"file": f"parcels_g{k}.pmtiles", "districts": codes,
+                       "parcels": int(len(sub))})
+        print(f"  그룹 {k}: 자치구 {len(codes):>2}개 · {len(sub):>7,} 필지 "
+              f"→ {path.name} {path.stat().st_size / 1e6:,.0f}MB")
+    print(f"  속성 {len(out.columns) - 2}개 · {ngroups}개 그룹")
+    return paths, groups
 
 
 def export_scoring_table(cfg):
@@ -106,7 +128,13 @@ def export_scoring_table(cfg):
     static = F_JIMOK | F_ZONE | F_LANDUSE | F_ROAD | F_PRICE
     # 인덱스를 리셋해야 한다. sjoin 이 돌려주는 인덱스가 곧 배열 위치여야
     # rows 와 adj 의 정합성이 유지된다.
-    g = g[(g["flags"] & static) == 0].reset_index(drop=True)
+    g = g[(g["flags"] & static) == 0]
+    # 타일에 그려지지 않는 자투리는 적격 표에서도 뺀다. 두 산출물이 어긋나면
+    # 목록에 뜨는데 지도에서 클릭이 안 되는 필지가 생긴다 (실측 13건).
+    amin = cfg["filters"]["min_parcel_area_sqm"]
+    tiny = int((g["area_sqm"] < amin).sum())
+    g = g[g["area_sqm"] >= amin].reset_index(drop=True)
+    print(f"  {amin}㎡ 미만 자투리 제외: {tiny:,} (후보가 될 수 없는 크기)")
 
     # 필지 중심점 (EPSG:5186 미터). 거점 선정은 필지 간 거리를 재야 하는데
     # 타일 도형에 의존하면 화면 밖 필지를 못 쓴다. 좌표를 직접 싣는다.
@@ -161,29 +189,47 @@ def export_scoring_table(cfg):
     payload = {
         "cols": ["a", "f", "r", "p", "d", "s", "t", "x", "tf", "ri", "cx", "cy", "lon", "lat", "pd"],
         "price_dates": price_dates,     # pd 열이 가리키는 공시일자
+        # 필지명·자치구코드는 싣지 않는다. PNU 로 정확히 복원된다
+        # (89.9만 건 전수 대조 불일치 0). 이름을 그대로 실으면 24MB,
+        # 법정동 이름표는 467개 18KB 다.
+        #   PNU[0:5]  = 자치구코드
+        #   PNU[0:10] = 법정동코드 → 이름표
+        #   PNU[11:15] 본번 / [15:19] 부번 → "800-20" (부번 0 이면 본번만)
+        "bjd_names": dict(g.assign(
+            _b=g["pnu"].str[:10],
+            _d=g["addr"].str.replace("서울특별시 ", "", regex=False))
+            .groupby("_b")["_d"].first()),
         "ids": g["pnu"].tolist(),
-        "nm": (g["addr"].str.replace("서울특별시 ", "", regex=False)
-               + " " + g["jibun"]).tolist(),
         "z": g["zone1"].map(ZONE_CODES).fillna(0).astype(int).tolist(),
-        "g": g["sgg_cd"].astype(int).tolist(),
         "rows": rows,
-        # 연접(맞닿음) 관계. 합필은 연접이 법적 요건이라 도로로 갈린 필지는 여기서 빠진다.
-        # rows 와 같은 인덱스를 쓰므로 정합성이 구조적으로 보장된다.
-        "adj": adjacency,
     }
     path = WEB_DATA / "scoring.json"
     path.write_text(json.dumps(payload, separators=(",", ":")), encoding="utf-8")
-    print(f"  scoring.json      {len(g):,}행  "
-          f"{path.stat().st_size / 1e6:.2f}MB (F5 제외 필터 통과분 + 연접관계)")
+    print(f"  scoring.json      {len(g):,}행  {path.stat().st_size / 1e6:.2f}MB")
+
+    # 연접 관계는 합필 모드에서만 쓴다. 첫 화면에 11MB 를 지울 이유가 없으므로
+    # 별도 파일로 빼고 합필 모드를 켤 때 받는다. rows 와 같은 인덱스를 쓴다.
+    apath = WEB_DATA / "adjacency.json"
+    apath.write_text(json.dumps({"n": len(g), "adj": adjacency},
+                                separators=(",", ":")), encoding="utf-8")
+    print(f"  adjacency.json    연접 {npairs:,}쌍  {apath.stat().st_size / 1e6:.2f}MB (지연 로드)")
 
 
-def build_tiles(cfg, geojson):
-    """T-402 — tippecanoe 로 PMTiles 생성."""
+def build_tiles(cfg, geojsons, groups):
+    """T-402 — tippecanoe 로 PMTiles 생성. 그룹마다 한 파일."""
     if not shutil.which("tippecanoe"):
         print("  ⚠️ tippecanoe 미설치 — `brew install tippecanoe` 후 재실행")
         return None
     T = cfg["tiles"]
-    out = ROOT / T["output"]
+    total = 0
+    for gj, grp in zip(geojsons, groups):
+        out = WEB_DATA / grp["file"]
+        total += _tippecanoe(T, gj, out)
+    print(f"  합계 {total:.1f}MB")
+    return groups
+
+
+def _tippecanoe(T, geojson, out):
     out.parent.mkdir(parents=True, exist_ok=True)
     cmd = [
         "tippecanoe", "-o", str(out), "--force",
@@ -193,24 +239,30 @@ def build_tiles(cfg, geojson):
         "--no-feature-limit", "--no-tile-size-limit",
         "--drop-densest-as-needed",          # 저줌에서만 솎아낸다
         "--coalesce-densest-as-needed",
+        # 0.4㎡ 짜리 자투리 필지도 남긴다. 기본값은 최대줌에서도 이런 도형을
+        # 솎아내는데, 그러면 scoring.json 에는 있고 지도에는 없는 필지가 생긴다
+        # (실측 73건). 목록에 뜨는데 클릭이 안 되는 상태가 된다.
+        "--no-tiny-polygon-reduction",
         "--simplification=4",
         str(geojson),
     ]
-    print(f"  $ {' '.join(cmd[:8])} …")
     r = subprocess.run(cmd, capture_output=True, text=True)
     if r.returncode != 0:
         print(r.stderr[-1500:])
         raise SystemExit("tippecanoe 실패")
     mb = out.stat().st_size / 1e6
     ok = "✅" if mb <= T["max_size_mb"] else "❌ 용량 초과"
-    print(f"  → {out.relative_to(ROOT)}  {mb:.1f}MB (상한 {T['max_size_mb']}MB) {ok}")
-    return out
+    print(f"  → {out.name}  {mb:.1f}MB (상한 {T['max_size_mb']}MB) {ok}")
+    if mb > T["max_size_mb"]:
+        raise SystemExit(f"{out.name} {mb:.1f}MB > 상한 {T['max_size_mb']}MB — "
+                         f"tiles.groups 를 늘리세요")
+    return mb
 
 
 PARCEL_COUNT = {"total": 0, "by_sgg": {}}
 
 
-def export_aux(cfg):
+def export_aux(cfg, groups):
     """T-403 — 역·구경계. 소형이라 타일 불필요."""
     crs = cfg["region"]["output_crs"]
 
@@ -289,6 +341,9 @@ def export_aux(cfg):
             "shape_factor_span": 0.32,
             "realization_base": cfg["profitability"]["realization"]["base"],
         },
+        "tile_groups": groups,     # 타일 파일과 담당 자치구
+        # 지도 minZoom 을 여기에 맞춘다. 어긋나면 축소했을 때 필지가 사라진다.
+        "tiles_min_zoom": cfg["tiles"]["min_zoom"],
         "data_vintage": {
             "필지": "2026-05-13 (AL_D194 토지특성정보)",
             "개별공시지가": f"AL_D151 · 공시일자 {price_vintage}",
@@ -306,16 +361,16 @@ def main():
     cfg = load_config()
     print("═" * 62)
     print("T-401  필지 GeoJSON 내보내기 (raw 속성만)")
-    gj = export_parcels(cfg)
+    gjs, groups = export_parcels(cfg)
 
     print("\n" + "═" * 62)
     print("T-402  PMTiles 생성")
-    build_tiles(cfg, gj)
+    build_tiles(cfg, gjs, groups)
 
     print("\n" + "═" * 62)
     print("T-403  부가 레이어")
     export_scoring_table(cfg)
-    export_aux(cfg)
+    export_aux(cfg, groups)
     print("\n✅ 완료")
 
 

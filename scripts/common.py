@@ -239,8 +239,15 @@ def rent_index(g, cfg, verbose=True):
     fallback = idx.isna()
     idx = idx.fillna(g["sgg_cd"].map(sgg))
     src[fallback] = "자치구"
-    idx = idx.fillna(1.0)
-    src[idx.isna()] = "기본"
+    # 자치구 지수조차 없으면 1.0 으로 메우면 안 된다. 그 구는 성북구와 임대료가
+    # 같다고 **가정**해 버리는 것이고, 그러면 자치구를 섞은 순위가 성립하지 않는다
+    # (D-019). 실제로 서울 전역으로 넓혔을 때 91% 가 조용히 1.0 을 받았다.
+    missing = sorted(set(g.loc[idx.isna(), "sgg_cd"].astype(str)))
+    if missing:
+        raise SystemExit(
+            f"임대료 지역지수가 없는 자치구 {len(missing)}개: {', '.join(missing)}\n"
+            f"  scripts/09_rent_market.py 를 먼저 실행하세요. "
+            f"지수 없이 섞으면 순위가 임대료 차이를 못 본다 (D-019).")
     if verbose:
         print(f"  지역지수: 법정동 {int((src == '법정동').sum()):,} / "
               f"자치구 폴백 {int((src == '자치구').sum()):,}"

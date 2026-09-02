@@ -17,7 +17,7 @@ import geopandas as gpd
 import numpy as np
 
 from common import (F_JIMOK, F_LANDUSE, F_PRICE, F_ROAD, F_ZONE,
-                    INTERIM, load_config)
+                    INTERIM, ROOT, load_config)
 
 N_TOP = 200
 N_ASM = 10
@@ -120,6 +120,25 @@ def main():
         json.dumps(ref, ensure_ascii=False, indent=1), encoding="utf-8")
     print(f"  _py_price.json    {len(rows)}건  공시일자 {ref['dates']}  "
           f"자료없음 {ref['missing_count']}")
+
+    # ── 요약 (검증이 하드코딩하지 않도록) ──────────────────────────
+    # 후보 수를 테스트에 박아 두면 데이터가 바뀔 때 따라오지 않는다.
+    # 실제로 8,602(2개구) 가 코드에 박혀 있었다.
+    summary = {
+        "parcels": int(len(g)),
+        "candidates": int(g["rank"].notna().sum()),
+        "districts": int(g["sgg_cd"].nunique()),
+        "tile_groups": int(cfg["tiles"]["groups"]),
+        "eligible": int(json.loads(
+            (ROOT / "web" / "data" / "scoring.json").read_text(encoding="utf-8")
+        )["rows"].__len__()),
+        "by_district": {str(k): int(v) for k, v in
+                        g[g["rank"].notna()]["sgg_cd"].value_counts().sort_index().items()},
+    }
+    (INTERIM / "_py_summary.json").write_text(
+        json.dumps(summary, ensure_ascii=False, indent=1), encoding="utf-8")
+    print(f"  _py_summary.json  필지 {summary['parcels']:,} · "
+          f"후보 {summary['candidates']:,} · 자치구 {summary['districts']}")
 
     # ── 합필 ────────────────────────────────────────────────────────
     asm = build_assembly_refs(g, cfg)

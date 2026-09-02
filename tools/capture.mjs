@@ -15,6 +15,7 @@ const BASE = process.argv[2] || "http://127.0.0.1:8899/";
 const OUT = process.argv[3] || "docs/images";
 mkdirSync(OUT, { recursive: true });
 
+const SEOUL = [126.9895, 37.5585];    // 서울 전역
 const GU = [127.0175, 37.6065];       // 성북구 전체
 const JR = [127.00564, 37.61223];     // 정릉동 상위 후보 밀집부
 const JR_S = [127.01050, 37.60000];   // 정릉동 남부 (607/548 일대)
@@ -86,9 +87,9 @@ const pickParcel = async (pg, name) => {
   if (!opened.ok) throw new Error(`캡처 실패: ${opened.why}`);
 };
 
-console.log("캡처 시작 (정릉동)");
-// 01 성북구 전경
-await shot("01-overview-seongbuk", { center: GU, zoom: 12.5 });
+console.log("캡처 시작");
+// 01 서울 전역
+await shot("01-overview-seoul", { center: SEOUL, zoom: 11.05, settle: 10000 });
 // 02 정릉동 일대
 await shot("02-jeongneung-area", { center: JR, zoom: 14.4 });
 // 03 정릉동 확대 - 적합도 분포
@@ -128,8 +129,11 @@ await shot("10-dark-mode", { center: JR_S, zoom: 16.0, theme: "dark" });
 // 11 모바일
 await shot("11-mobile", { w: 414, h: 896, center: JR, zoom: 15.6 });
 
-// 12 성북·성동 두 자치구
-await shot("12-two-districts", { center: TWO, zoom: 11.9 });
+// 12 상위 후보 밀집부 (영등포 준공업)
+await shot("12-top-cluster", {
+  center: [126.8975, 37.5310], zoom: 14.0, settle: 8000,
+  setup: async (pg) => { await pg.selectOption("#sggSel", "11560"); await pg.waitForTimeout(1500); },
+});
 // 13 성동구 전경
 await shot("13-seongdong-area", {
   center: SD, zoom: 13.2,
@@ -159,6 +163,7 @@ await shot("16-assembly", {
   setup: async (pg) => {
     await pg.selectOption("#sggSel", "11200");
     await pg.waitForTimeout(1200);
+    await pg.evaluate(() => window.__loadAdjacency());
     const ids = await pg.evaluate(() => {
       const s = window.__state;
       const i = s.D.names.findIndex((n) => n === "성동구 성수동2가 299-19");
@@ -174,7 +179,11 @@ await shot("16-assembly", {
       document.getElementById("asmMode").checked = true;
       document.getElementById("asmMode").dispatchEvent(new Event("change", { bubbles: true }));
       for (const id of list) window.__asmToggle(id);
-      const f = window.__map.getFilter("parcel-asm");
+      // 레이어는 타일 그룹마다 하나씩이다 (parcel-asm-0, -1, …)
+      const m = window.__map;
+      const asmLayers = m.getStyle().layers.filter((l) => l.id.startsWith("parcel-asm-")
+        && l.type === "fill").map((l) => l.id);
+      const f = asmLayers.length ? m.getFilter(asmLayers[0]) : null;
       return {
         n: window.__state.asm.length,
         open: !document.getElementById("asm").hidden,
@@ -197,6 +206,7 @@ await shot("17-hub", {
   setup: async (pg) => {
     await pg.selectOption("#sggSel", "11200");
     await pg.waitForTimeout(1200);
+    await pg.evaluate(() => window.__loadAdjacency());
     const ids = await pg.evaluate(() => {
       const s = window.__state;
       const i = s.D.names.findIndex((n) => n === "성동구 성수동2가 299-19");

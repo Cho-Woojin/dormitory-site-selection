@@ -13,6 +13,10 @@ import { chromium } from "playwright-core";
 import { readFileSync, writeFileSync } from "node:fs";
 
 const BASE = process.argv[2] || "http://127.0.0.1:8899/";
+// 후보 수·자치구 수는 Python 정답지에서 읽는다. 코드에 박으면 데이터가
+// 바뀔 때 따라오지 않는다 (실제로 8,602 가 박혀 있었다).
+const SUM = JSON.parse(readFileSync("data/interim/_py_summary.json", "utf8"));
+const CAND = SUM.candidates;
 const fails = [];
 const ok = (label, pass, detail = "") => {
   console.log(`  ${pass ? "✅" : "❌"} ${label}${detail ? "  " + detail : ""}`);
@@ -55,12 +59,19 @@ const boot = await pg.evaluate(() => ({
   canvas: !!document.querySelector("#map canvas"),
   layers: window.__map.getStyle().layers.map((l) => l.id),
 }));
-ok("후보 산출", boot.cand === 8602, `${boot.cand.toLocaleString()}`);
+ok("후보 산출", boot.cand === CAND, `${boot.cand.toLocaleString()}`);
 ok("리스트 렌더", boot.rows === 60, `${boot.rows}행`);
 ok("지도 캔버스", boot.canvas);
-ok("필지 레이어 존재", boot.layers.includes("parcel-fill"));
+// 타일이 그룹별 파일로 나뉘어 레이어도 그룹마다 하나씩이다
+ok("필지 레이어 존재", boot.layers.filter((l) => l.startsWith("parcel-fill-")).length
+  === SUM.tile_groups, `${boot.layers.filter((l) => l.startsWith("parcel-fill-")).length}개 그룹`);
 // 역 이름은 심볼 레이어가 아니라 HTML 마커다 (글리프 의존 제거). 상세는 3d.
 ok("역 레이어 존재", boot.layers.includes("stn-dot"));
+// 지도 minZoom 이 타일 minzoom 보다 낮으면 축소했을 때 필지가 통째로 사라진다
+const zmin = await pg.evaluate(() => ({
+  map: window.__map.getMinZoom(), tiles: window.__state.meta.tiles_min_zoom }));
+ok("지도 최소줌 ≥ 타일 최소줌", zmin.map >= zmin.tiles,
+  `지도 ${zmin.map} · 타일 ${zmin.tiles}`);
 ok("콘솔 에러 없음", pg.errors.length === 0, pg.errors.slice(0, 2).join(" | "));
 // 부팅 예산. "Map 생성자" 는 동기 WebGL 초기화라 하드웨어에 좌우된다
 // (실측: 실제 GPU ~150ms, 이 테스트의 SwiftShader 소프트웨어 렌더링 ~2초).
@@ -71,9 +82,13 @@ const btMap = Object.fromEntries(bt);
 // "데이터 대기" 도 뺀다. 동기 WebGL 초기화가 메인 스레드를 잡고 있으면
 // 네트워크가 끝나도 promise 가 못 풀려서 그 시간이 여기로 흘러든다
 // (실측 336ms ~ 1,038ms 로 요동). 환경에 좌우되지 않는 구간만 예산으로 둔다.
-const ENV = new Set(["Map 생성자", "데이터 대기"]);
+const ENV = new Set(["Map 생성자", "데이터 대기", "경계·역 대기"]);
 const ours = bt.filter(([k]) => !ENV.has(k)).reduce((a, [, v]) => a + v, 0);
-ok("우리 몫 부팅 200ms 이내", ours <= 200,
+// 예산은 규모에 따라 다르다. 서울 전역(89.9만 필지 · 후보 13.3만)에서
+// 표 준비 142 · 경계·역 구성 · 최초 계산 238ms 가 실측이다. 2개 구일 때는 124ms 였다.
+// 한가한 머신 실측 425~450ms. CPU 경합이 있으면 표 준비·최초 계산도 함께
+// 부풀므로(725ms 관측) 여유를 둔다. 타일 대기가 돌아오면 수 초로 튀어 잡힌다.
+ok("우리 몫 부팅 800ms 이내", ours <= 800,
   `${ours}ms  (${bt.map(([k, v]) => `${k} ${v}`).join(" · ")})`);
 // 여기가 커지면 map "load"(타일까지) 를 다시 기다리고 있다는 뜻이다
 ok("타일을 기다리지 않음", (btMap["style.load 대기"] ?? 0) <= 200,
@@ -100,7 +115,7 @@ const same = jsTop.filter((x) => pyTop.includes(x)).length;
 const order = jsTop.filter((x, k) => x === pyTop[k]).length;
 ok("상위200 집합 일치", same === 200, `${same}/200`);
 ok("상위200 순서 일치", order === 200, `${order}/200`);
-ok("후보 수 일치", jsMetrics.n === 8602, `${jsMetrics.n}`);
+ok("후보 수 일치", jsMetrics.n === CAND, `${jsMetrics.n}`);
 ok("중위 수익률 3.7%대", Math.abs(jsMetrics.medS1 - 0.0374) < 0.003,
   `${(jsMetrics.medS1 * 100).toFixed(2)}%`);
 writeFileSync("/tmp/js_top200.txt", jsTop.join("\n"));
@@ -117,14 +132,28 @@ const setRange = async (id, v) => {
   await pg.waitForTimeout(320);
 };
 const candNow = () => pg.evaluate(() => window.__state.result.order.length);
+/* 서울 전역은 재계산이 300ms 안팎이라 고정 대기로는 이전 값을 읽는다.
+   "값이 멎었는지" 로도 부족하다 — 아직 시작조차 안 했으면 멎어 보인다.
+   앱이 세는 재계산 횟수가 늘어난 뒤에 읽는다. */
+const recomputes = () => pg.evaluate(() => window.__recomputes || 0);
+const afterRecompute = async (act) => {
+  const before = await recomputes();
+  await act();
+  for (let i = 0; i < 60; i++) {
+    if ((await recomputes()) > before) break;
+    await pg.waitForTimeout(80);
+  }
+  await pg.waitForTimeout(120);      // 렌더까지
+  return candNow();
+};
 
-await setRange("minRooms", 60);
-const c60 = await candNow();
-ok("최소 실 수 60 → 후보 감소", c60 < 8602 && c60 > 0, `${c60.toLocaleString()}`);
-await setRange("minRooms", 20);
-ok("최소 실 수 복귀", (await candNow()) === 8602);
+// 서울 전역은 재계산이 250ms 안팎이라 고정 대기로는 이전 값을 읽는다
+const c60 = await afterRecompute(() => setRange("minRooms", 60));
+ok("최소 실 수 60 → 후보 감소", c60 < CAND && c60 > 0, `${c60.toLocaleString()}`);
+const cBack = await afterRecompute(() => setRange("minRooms", 20));
+ok("최소 실 수 복귀", cBack === CAND, `${cBack.toLocaleString()}`);
 
-await setRange("rent", 45);
+await afterRecompute(() => setRange("rent", 45));
 const lowRent = await pg.evaluate(() => {
   const s = window.__state, r = s.result;
   return r.s1[r.order[0]];
@@ -155,13 +184,11 @@ const afterReset = await pg.evaluate(() => ({
   rent: document.getElementById("rent").value,
   gA: document.getElementById("gA").value,
 }));
-ok("되돌리기", afterReset.cand === 8602 && afterReset.rent === "85" && afterReset.gA === "250");
+ok("되돌리기", afterReset.cand === CAND && afterReset.rent === "85" && afterReset.gA === "250");
 
 // 다세대 제외 토글
-await pg.check("#exSub");
-await pg.waitForTimeout(320);
-const exSub = await candNow();
-ok("다세대 제외 토글", exSub > 0 && exSub < 8602, `${exSub.toLocaleString()}`);
+const exSub = await afterRecompute(() => pg.check("#exSub"));
+ok("다세대 제외 토글", exSub > 0 && exSub < CAND, `${exSub.toLocaleString()}`);
 await pg.uncheck("#exSub");
 await pg.waitForTimeout(320);
 
@@ -171,9 +198,7 @@ const sggOpts = await pg.evaluate(() =>
 ok("자치구 선택지", sggOpts.length >= 3, sggOpts.map((o) => o[1]).join(" / "));
 const perSgg = {};
 for (const [val, name] of sggOpts.slice(1)) {
-  await pg.selectOption("#sggSel", val);
-  await pg.waitForTimeout(400);
-  perSgg[name] = await candNow();
+  perSgg[name] = await afterRecompute(() => pg.selectOption("#sggSel", val));
   const allSame = await pg.evaluate((v) => {
     const s = window.__state;
     return s.result.order.every((i) => String(s.D.sgg[i]) === v);
@@ -183,14 +208,20 @@ for (const [val, name] of sggOpts.slice(1)) {
 await pg.selectOption("#sggSel", "0");
 await pg.waitForTimeout(400);
 const sum = Object.values(perSgg).reduce((a, b) => a + b, 0);
-ok("자치구 합 = 전체", sum === 8602, `${sum} vs 8602`);
+ok("자치구 합 = 전체", sum === CAND, `${sum} vs ${CAND}`);
 
 // 제외 필지 표시
 await pg.check("#showEx");
 await pg.waitForTimeout(400);
-const exPaint = await pg.evaluate(() =>
-  JSON.stringify(window.__map.getPaintProperty("parcel-fill", "fill-opacity")));
-ok("제외 필지 표시 토글", exPaint.includes("0.42"));
+// 레이어는 타일 그룹마다 하나씩이다. 전부 같은 값이어야 한다 —
+// 하나만 확인하면 그룹별로 어긋난 상태를 못 잡는다.
+const exPaint = await pg.evaluate(() => {
+  const m = window.__map;
+  return m.getStyle().layers.filter((l) => l.id.startsWith("parcel-fill-"))
+    .map((l) => JSON.stringify(m.getPaintProperty(l.id, "fill-opacity")));
+});
+ok("제외 필지 표시 토글", exPaint.length > 0 && exPaint.every((v) => v.includes("0.42")),
+  `${exPaint.length}개 그룹`);
 await pg.uncheck("#showEx");
 
 // ── 3a. 범위 폴리곤 ──────────────────────────────────────
@@ -225,6 +256,12 @@ ok("범위 해제", (await candNow()) === beforeArea, `${(await candNow()).toLoc
 globalThis.__sec = "3b)";
 console.log("\n3b) 합필");
 const asmRef = JSON.parse(readFileSync("data/interim/_py_assembly.json", "utf8"));
+// 연접 관계(10.6MB)는 합필 모드에서 처음 받는다. 첫 화면에 싣지 않는다.
+const adjLoaded = await pg.evaluate(async () => {
+  await window.__loadAdjacency();
+  return (window.__state.D.adj || []).length;
+});
+ok("연접 관계 지연 로드", adjLoaded === SUM.eligible, `${adjLoaded.toLocaleString()}행`);
 await pg.evaluate(() => { document.getElementById("asmMode").checked = true; });
 const asmRes = [];
 for (const cse of asmRef) {
