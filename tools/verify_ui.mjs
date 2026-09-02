@@ -256,6 +256,33 @@ ok("meta description 이 현재 규모",
   ident.desc.slice(0, 70) + "…");
 ok("정적 HTML 에 옛 대상지역 없음",
   !/성북구·성동구|79,282/.test(ident.html), "title·description·본문");
+
+/* 링크 미리보기(카카오톡 등)는 og 태그만 읽는다. 없으면 썸네일이 안 뜨고,
+   낡으면 옛 범위가 계속 공유된다. */
+const og = await pg.evaluate(async () => {
+  const get = (sel) => document.querySelector(sel)?.content || "";
+  const img = get('meta[property="og:image"]');
+  let imgOk = false, ct = "";
+  try {
+    const r = await fetch(img.replace(/^https?:\/\/[^/]+\/[^/]*\//, ""));
+    imgOk = r.ok; ct = r.headers.get("content-type") || "";
+  } catch {}
+  return {
+    title: get('meta[property="og:title"]'),
+    desc: get('meta[property="og:description"]'),
+    img, imgOk, ct,
+    url: get('meta[property="og:url"]'),
+    w: get('meta[property="og:image:width"]'),
+    tw: get('meta[name="twitter:card"]'),
+  };
+});
+ok("og:title 이 현재 범위", og.title.includes(scope), og.title);
+ok("og:description 이 현재 규모",
+  og.desc.includes(SUM.parcels.toLocaleString("en-US")), og.desc.slice(0, 50) + "…");
+ok("og:image 절대 URL", /^https:\/\//.test(og.img), og.img);
+ok("og:image 파일 존재", og.imgOk && /image\//.test(og.ct), og.ct || "없음");
+ok("og:image 1200×630 선언", og.w === "1200");
+ok("twitter:card summary_large_image", og.tw === "summary_large_image");
 ok("자치구 선택 시 그 구로 이동", move.miss.length === 0,
   move.miss.length ? `벗어남 ${move.miss.join(",")}` : "4개 구 확인");
 ok("전체 선택 시 서울 전역", move.allZoom <= 12, `줌 ${move.allZoom}`);
