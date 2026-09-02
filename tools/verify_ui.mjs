@@ -214,6 +214,35 @@ await pg.waitForTimeout(400);
 const sum = Object.values(perSgg).reduce((a, b) => a + b, 0);
 ok("자치구 합 = 전체", sum === CAND, `${sum} vs ${CAND}`);
 
+/* 자치구를 고르면 지도가 그 구로 가야 한다. 경계 GeoJSON 에 sgg_cd 가 없어
+   bbox 가 전부 "undefined" 키로 덮이는 바람에 오래 망가져 있었다. */
+const move = await pg.evaluate(async () => {
+  const m = window.__map, s = window.__state, wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  const sel = document.getElementById("sggSel");
+  const inside = (code) => {
+    const b = s.bndByCode[code];
+    const c = m.getCenter();
+    return b && c.lng >= b.getWest() && c.lng <= b.getEast()
+        && c.lat >= b.getSouth() && c.lat <= b.getNorth();
+  };
+  const out = { bbox: Object.keys(s.bndByCode).length, miss: [] };
+  for (const code of ["11680", "11500", "11320", "11620"]) {
+    sel.value = code; sel.dispatchEvent(new Event("change", { bubbles: true }));
+    await wait(1400);
+    if (!inside(code)) out.miss.push(code);
+  }
+  sel.value = "0"; sel.dispatchEvent(new Event("change", { bubbles: true }));
+  await wait(1400);
+  out.allZoom = +m.getZoom().toFixed(2);
+  return out;
+});
+ok("경계 bbox = 자치구 수", move.bbox === SUM.districts, `${move.bbox}/${SUM.districts}`);
+const hdr = await pg.evaluate(() => document.getElementById("hdrSub").textContent);
+ok("헤더 필지 수 표시", hdr.includes(SUM.parcels.toLocaleString("en-US")), hdr);
+ok("자치구 선택 시 그 구로 이동", move.miss.length === 0,
+  move.miss.length ? `벗어남 ${move.miss.join(",")}` : "4개 구 확인");
+ok("전체 선택 시 서울 전역", move.allZoom <= 12, `줌 ${move.allZoom}`);
+
 // 제외 필지 표시
 await pg.check("#showEx");
 await pg.waitForTimeout(400);

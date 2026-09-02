@@ -1037,13 +1037,19 @@ async function boot() {
   // 네트워크 대기와 실제 구성 작업을 나눠 잰다. 동기 WebGL 초기화가 메인
   // 스레드를 잡고 있으면 페치가 끝나도 promise 가 안 풀려 대기 시간이 튄다.
   step("경계·역 대기");
-  // 자치구별 경계 bbox — 필터 시 지도 이동에 쓴다
+  // 자치구별 경계 bbox — 필터 시 지도 이동에 쓴다.
+  // 키가 되는 sgg_cd 가 없으면 전부 "undefined" 로 덮여 한 개만 남는다.
   state.bndByCode = {};
+  state.bndAll = new maplibregl.LngLatBounds();
   for (const f of bnd.features) {
     const bb = new maplibregl.LngLatBounds();
-    const add = (c) => (Array.isArray(c[0]) ? c.forEach(add) : bb.extend(c));
+    const add = (c) => (Array.isArray(c[0]) ? c.forEach(add) : (bb.extend(c), state.bndAll.extend(c)));
     add(f.geometry.coordinates);
     state.bndByCode[String(f.properties.sgg_cd)] = bb;
+  }
+  if (Object.keys(state.bndByCode).length !== (meta.districts || []).length) {
+    console.error("[dss] 경계 bbox 수가 자치구 수와 다르다 — 자치구 선택 시 지도가 안 움직인다",
+      Object.keys(state.bndByCode));
   }
 
   map.addSource("bnd", {
@@ -1206,11 +1212,30 @@ function wireUI() {
     $(id).addEventListener("change", onChange);
   });
 
+  /* 자치구를 고르면 그 구가 보이게 옮긴다. 패널이 지도를 좌우로 가리므로
+     화면 가운데가 아니라 **패널 사이 빈 영역**에 맞춰야 한다. */
+  const mapPadding = () => {
+    const narrow = matchMedia("(max-width: 900px)").matches;
+    if (narrow) return { top: 20, bottom: Math.round(innerHeight * 0.42), left: 20, right: 20 };
+    const vis = (id) => {
+      const e = $(id);
+      return e && !e.hidden && getComputedStyle(e).display !== "none"
+        ? e.getBoundingClientRect() : null;
+    };
+    const left = vis("params") || vis("detail") || vis("asm");
+    const right = vis("list") || vis("hub");
+    return {
+      top: 24, bottom: 60,
+      left: (left ? left.right : 12) + 24,
+      right: (right ? innerWidth - right.left : 12) + 24,
+    };
+  };
   $("sggSel").addEventListener("change", () => {
     const code = $("sggSel").value;
-    if (code === "0" || !state.bndByCode) return;
-    const b = state.bndByCode[code];
-    if (b) state.map.fitBounds(b, { padding: 60, duration: 700 });
+    if (!state.bndByCode) return;
+    const b = code === "0" ? state.bndAll : state.bndByCode[code];
+    if (!b || b.isEmpty()) return;
+    state.map.fitBounds(b, { padding: mapPadding(), maxZoom: 15, duration: 700 });
   });
 
   $("showEx").addEventListener("change", (e) => {

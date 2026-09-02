@@ -287,6 +287,10 @@ PARCEL_COUNT = {"total": 0, "by_sgg": {}}
 
 
 def export_aux(cfg, groups):
+    # export_parcels() 가 채우는 전역이다. 단독 실행하면 0 이 그대로 meta 에
+    # 실려 헤더가 "0 필지" 가 된다. 조용히 틀린 값을 쓰느니 멈춘다.
+    assert PARCEL_COUNT["total"] > 0, \
+        "PARCEL_COUNT 가 비었다 — export_parcels() 를 먼저 실행할 것"
     """T-403 — 역·구경계. 소형이라 타일 불필요."""
     crs = cfg["region"]["output_crs"]
 
@@ -301,8 +305,18 @@ def export_aux(cfg, groups):
     )
     codes = [d["code"] for d in cfg["region"]["districts"]]
     gu = sgg[sgg["sgg_cd"].astype(str).isin(codes)].to_crs(crs)
-    gu[["sgg_nm", "geometry"]].to_file(WEB_DATA / "boundary.geojson", driver="GeoJSON")
-    print(f"  boundary.geojson  {(WEB_DATA / 'boundary.geojson').stat().st_size / 1e3:.0f}KB")
+    # sgg_cd 를 반드시 함께 내보낸다. 웹이 자치구 코드로 경계를 찾아 지도를
+    # 옮기는데, 이름만 있으면 전부 undefined 키로 덮여 한 개만 남는다
+    # (2개 구 시절부터 자치구 선택 시 지도가 움직이지 않았다).
+    gu = gu.copy()
+    gu["sgg_cd"] = gu["sgg_cd"].astype(str)
+    out_b = WEB_DATA / "boundary.geojson"
+    gu[["sgg_cd", "sgg_nm", "geometry"]].to_file(out_b, driver="GeoJSON")
+    got = json.loads(out_b.read_text(encoding="utf-8"))
+    keys = {f["properties"].get("sgg_cd") for f in got["features"]}
+    assert keys == set(codes), f"경계 sgg_cd 불일치: {len(keys)}개 vs {len(codes)}개"
+    print(f"  boundary.geojson  {len(got['features'])}개 자치구  "
+          f"{out_b.stat().st_size / 1e3:.0f}KB")
 
     # 기준연도는 손으로 적지 않는다. 손으로 적은 값은 데이터가 바뀌어도
     # 따라오지 않는다 (실제로 공시지가 출처가 AL_D151 로 바뀐 뒤에도
