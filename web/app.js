@@ -1011,11 +1011,16 @@ async function boot() {
       + `<b>${nameOf(hiC)} ${hi.toFixed(2)}</b> 까지 벌어집니다. 같은 기준값이라도 `
       + `적용 임대료가 <b>${(hi / lo).toFixed(1)}배</b> 차이 납니다.`;
   }
-  // 자치구 이름을 전부 나열하면 25개에서 헤더가 넘친다. 개수로 줄인다.
+  // 문서 제목도 데이터에서 맞춘다. HTML 에 적어 두면 범위가 바뀔 때 안 따라온다
+  // (실제로 서울 전역이 된 뒤에도 "성북구·성동구" 로 남아 있었다).
   const nd = (meta.districts || []).length;
-  $("hdrSub").textContent =
-    (nd > 3 ? `서울 ${nd}개 자치구` : (meta.districts || []).map((x) => x.name).join(" · "))
-    + ` ${(meta.parcel_count || 0).toLocaleString()} 필지`;
+  const scope = nd > 3 ? `서울 ${nd}개 자치구`
+    : (meta.districts || []).map((x) => x.name).join("·");
+  document.title = `임대형기숙사 적합 필지 탐색 · ${scope}`;
+  const map0 = $("map");
+  if (map0) map0.setAttribute("aria-label", `${scope} 필지 분석 지도`);
+
+  $("hdrSub").textContent = `${scope} ${(meta.parcel_count || 0).toLocaleString()} 필지`;
   syncLabels();
 
   step("컨트롤 초기화");

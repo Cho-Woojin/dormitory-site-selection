@@ -239,6 +239,23 @@ const move = await pg.evaluate(async () => {
 ok("경계 bbox = 자치구 수", move.bbox === SUM.districts, `${move.bbox}/${SUM.districts}`);
 const hdr = await pg.evaluate(() => document.getElementById("hdrSub").textContent);
 ok("헤더 필지 수 표시", hdr.includes(SUM.parcels.toLocaleString("en-US")), hdr);
+
+/* 문서 제목·설명·aria-label 에 옛 대상지역이 남으면 브라우저 탭과 공유 링크가
+   틀린 범위를 말한다. 실제로 서울 전역이 된 뒤에도 "성북구·성동구" 였다. */
+const ident = await pg.evaluate(() => ({
+  title: document.title,
+  desc: document.querySelector('meta[name="description"]')?.content || "",
+  aria: document.getElementById("map")?.getAttribute("aria-label") || "",
+  html: document.documentElement.outerHTML.slice(0, 4000),
+}));
+const scope = `서울 ${SUM.districts}개 자치구`;
+ok("문서 제목이 현재 범위", ident.title.includes(scope), ident.title);
+ok("지도 aria-label 이 현재 범위", ident.aria.includes(scope), ident.aria);
+ok("meta description 이 현재 규모",
+  ident.desc.includes(scope) && ident.desc.includes(SUM.parcels.toLocaleString("en-US")),
+  ident.desc.slice(0, 70) + "…");
+ok("정적 HTML 에 옛 대상지역 없음",
+  !/성북구·성동구|79,282/.test(ident.html), "title·description·본문");
 ok("자치구 선택 시 그 구로 이동", move.miss.length === 0,
   move.miss.length ? `벗어남 ${move.miss.join(",")}` : "4개 구 확인");
 ok("전체 선택 시 서울 전역", move.allZoom <= 12, `줌 ${move.allZoom}`);
