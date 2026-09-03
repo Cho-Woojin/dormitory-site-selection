@@ -131,7 +131,6 @@ function rentHint() {
   const base = +$("rent").value;                        // 만원
   const code = $("sggSel") ? $("sggSel").value : "0";
   const won = (v) => `${Math.round(v)}만원`;
-  const baseNm = R.base_district_name || "기준";
   if (code !== "0" && R.by_sgg && R.by_sgg[code]) {
     const idx = R.by_sgg[code];
     const nm = (state.meta.districts.find((d) => d.code === code) || {}).name || "";
@@ -140,11 +139,11 @@ function rentHint() {
       ? ` · 법정동별 ${won(base * span[0])}~${won(base * span[1])}`
       : "";
     el.innerHTML = `<b>${nm} 적용 ${won(base * idx)}/월</b> (지수 ${idx.toFixed(2)})${dong}
-      <br>슬라이더는 <b>${baseNm} 기준값</b>이고, 필지마다 법정동 실거래 지수가 곱해집니다.`;
+      <br>필지마다 법정동 실거래 지수가 곱해집니다.`;
   } else {
     const vals = Object.values(R.by_sgg || {});
     const lo = vals.length ? Math.min(...vals) : 1, hi = vals.length ? Math.max(...vals) : 1;
-    el.innerHTML = `<b>${baseNm} 기준값</b>입니다. 필지마다 법정동 실거래 지수가 곱해집니다
+    el.innerHTML = `필지마다 법정동 실거래 지수가 곱해집니다
       (자치구 기준 ${won(base * lo)}~${won(base * hi)}).
       <br>자치구를 고르면 그 지역 적용액이 표시됩니다.`;
   }
@@ -996,7 +995,10 @@ async function boot() {
   const R = meta.rent_index || {};
   $("aboutScope").textContent =
     `${(meta.districts || []).length}개 자치구 ${(meta.parcel_count || 0).toLocaleString()} 필지`;
-  $("aboutRentBase").textContent = `${R.base_district_name || "기준"} 기준`;
+  // 지수의 기준점은 방법론 정보라 여기에만 둔다. 슬라이더 옆에서는 빼고
+  // 그 지역 적용액만 보여 준다 (읽는 사람이 환산할 일이 없도록).
+  $("aboutRentBase").textContent =
+    R.base_district_name ? ` (${R.base_district_name} 실거래 기준)` : "";
   if (R.n_transactions) {
     $("aboutRentN").textContent =
       `법정동 ${R.n_dong}개 · 전월세 실거래 ${R.n_transactions.toLocaleString()}건`;
@@ -1213,19 +1215,23 @@ async function boot() {
   map.doubleClickZoom.disable();
   map.on("load", () => map.doubleClickZoom.enable());
 
-  map.on("mousemove", "parcel-fill", (e) => {
-    const id = e.features[0]?.properties?.id;
-    if (id && id !== hovered) {
-      hovered = id;
-      setFilterAll("parcel-hover", ["==", ["get", "id"], id]);
-      map.getCanvas().style.cursor = "pointer";
-    }
-  });
-  map.on("mouseleave", "parcel-fill", () => {
-    hovered = "";
-    setFilterAll("parcel-hover", ["==", ["get", "id"], ""]);
-    map.getCanvas().style.cursor = "";
-  });
+  for (const l of TG.layers("parcel-fill")) {
+    map.on("mousemove", l, (e) => {
+      const id = e.features[0]?.properties?.id;
+      if (id && id !== hovered) {
+        hovered = id;
+        setFilterAll("parcel-hover", ["==", ["get", "id"], id]);
+        map.getCanvas().style.cursor = "pointer";
+      }
+    });
+  }
+  for (const l of TG.layers("parcel-fill")) {
+    map.on("mouseleave", l, () => {
+      hovered = "";
+      setFilterAll("parcel-hover", ["==", ["get", "id"], ""]);
+      map.getCanvas().style.cursor = "";
+    });
+  }
   map.on("click", (e) => {
     if (state.draw.on) {
       // 즉시 찍는다 (반응이 바로 보여야 한다). 더블클릭이 만드는 중복 꼭짓점은
@@ -1234,7 +1240,9 @@ async function boot() {
       drawRender();
       return;
     }
-    const fs = map.queryRenderedFeatures(e.point, { layers: ["parcel-fill"] });
+    // 레이어는 타일 그룹마다 하나씩이다. 이름을 하나만 적으면 MapLibre 가
+    // 조용히 빈 배열을 돌려줘 지도 클릭이 통째로 죽는다 (실제로 그랬다).
+    const fs = map.queryRenderedFeatures(e.point, { layers: TG.layers("parcel-fill") });
     if (!fs.length) return;
     const p = fs[0].properties;
     if (p.nm) state.tileNames.set(p.id, p.nm);

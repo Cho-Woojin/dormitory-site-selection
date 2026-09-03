@@ -285,6 +285,28 @@ ok("og:image 1200×630 선언", og.w === "1200");
 ok("twitter:card summary_large_image", og.tw === "summary_large_image");
 ok("자치구 선택 시 그 구로 이동", move.miss.length === 0,
   move.miss.length ? `벗어남 ${move.miss.join(",")}` : "4개 구 확인");
+
+/* 임대료 힌트는 "그 지역 적용액" 만 말한다. 기준 자치구 이름을 슬라이더 옆에
+   두면 읽는 사람이 자기 지역으로 환산해야 한다. */
+const hint = await pg.evaluate(async () => {
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  const sel = document.getElementById("sggSel");
+  const out = {};
+  out.all = document.getElementById("rentHint").innerText;
+  sel.value = "11680"; sel.dispatchEvent(new Event("change", { bubbles: true }));
+  await wait(1200);
+  out.gangnam = document.getElementById("rentHint").innerText;
+  sel.value = "0"; sel.dispatchEvent(new Event("change", { bubbles: true }));
+  await wait(1200);
+  // 안내문 글꼴이 다른 힌트와 같은가 (.ctl 밖에 있어 스타일을 못 받은 적이 있다)
+  const hs = [...document.querySelectorAll(".hint")].map((e) => getComputedStyle(e).fontSize);
+  return { ...out, sizes: [...new Set(hs)], n: hs.length };
+});
+ok("임대료 힌트에 기준 자치구 문구 없음",
+  !/기준값/.test(hint.all + hint.gangnam), hint.all.split("\n")[0].slice(0, 40));
+ok("자치구 고르면 적용액 표시", /강남구 적용 \d+만원\/월/.test(hint.gangnam),
+  hint.gangnam.split("\n")[0]);
+ok("힌트 글꼴 일관", hint.sizes.length === 1, `${hint.n}개 · ${hint.sizes.join("/")}`);
 ok("전체 선택 시 서울 전역", move.allZoom <= 12, `줌 ${move.allZoom}`);
 
 // 제외 필지 표시
@@ -621,6 +643,86 @@ await pg.evaluate(() => {
   document.getElementById("sggSel").dispatchEvent(new Event("change", { bubbles: true }));
 });
 await pg.waitForTimeout(600);
+
+// ── 3c-2. 실제 지도 클릭 ─────────────────────────────────
+globalThis.__sec = "3c-2)";
+console.log("\n3c-2) 지도 클릭");
+/* 지금까지 모든 검사가 __selectParcel·__asmToggle 을 직접 불렀다. 그래서
+   타일을 그룹으로 나누며 queryRenderedFeatures 의 레이어 이름이 바뀌었을 때
+   **지도 클릭이 통째로 죽은 것을 아무도 못 잡았다.** 실제로 눌러 본다. */
+await pg.evaluate(() => {
+  document.getElementById("sggSel").value = "0";
+  document.getElementById("sggSel").dispatchEvent(new Event("change", { bubbles: true }));
+});
+await pg.waitForTimeout(900);
+// 후보 1위와 그 연접 필지들이 한 화면에 들어오게 맞춘다
+const clickTargets = await pg.evaluate(() => {
+  const s = window.__state, D = s.D;
+  const i = s.result.order[0];
+  const grp = [i, ...(D.adj[i] || []).slice(0, 4)];
+  const b = grp.reduce((acc, k) => acc.extend([D.lon[k], D.lat[k]]),
+    new maplibregl.LngLatBounds([D.lon[i], D.lat[i]], [D.lon[i], D.lat[i]]));
+  window.__map.fitBounds(b, { padding: 260, maxZoom: 18.5, duration: 0 });
+  return grp.map((k) => ({ id: D.ids[k], lon: D.lon[k], lat: D.lat[k] }));
+});
+await pg.waitForTimeout(6000);
+const pts = await pg.evaluate((ts) => ts.map((t) => {
+  const p = window.__map.project([t.lon, t.lat]);
+  return { id: t.id, x: Math.round(p.x), y: Math.round(p.y) };
+}), clickTargets);
+
+// 1) 그냥 클릭하면 상세가 열려야 한다
+await pg.mouse.click(pts[0].x, pts[0].y);
+await pg.waitForTimeout(900);
+const clicked = await pg.evaluate(() => ({
+  open: !document.getElementById("detail").hidden,
+  name: document.getElementById("detailName").textContent,
+}));
+ok("지도 클릭 → 상세 열림", clicked.open, clicked.name || "안 열림");
+
+// 2) 합필 모드에서 클릭하면 담겨야 한다
+await pg.evaluate(() => {
+  document.getElementById("detailClose").click();
+  const e = document.getElementById("asmMode");
+  e.checked = true; e.dispatchEvent(new Event("change", { bubbles: true }));
+});
+await pg.waitForTimeout(2500);
+let added = 0;
+for (const p of pts) {
+  const before = await pg.evaluate(() => window.__state.asm.length);
+  await pg.mouse.click(p.x, p.y);
+  await pg.waitForTimeout(700);
+  if ((await pg.evaluate(() => window.__state.asm.length)) > before) added++;
+}
+ok("합필 모드에서 클릭으로 담김", added >= 2, `${added}/${pts.length}필지`);
+const asmState = await pg.evaluate(() => ({
+  n: window.__state.asm.length,
+  open: !document.getElementById("asm").hidden,
+  txt: document.getElementById("asmBody").innerText,
+}));
+ok("합필 패널이 지표를 계산", asmState.open && /실 · .*%/.test(asmState.txt),
+  asmState.txt.split("\n").slice(0, 2).join(" / "));
+
+/* 3) 같은 지점을 두 번 누르면 원래대로 돌아와야 한다.
+   "개수가 하나 준다" 로 보면 안 된다 — 작은 필지에서는 화면 좌표가
+   이웃에 걸려 다른 필지가 담기기도 한다. 집합이 원복되는지로 본다. */
+const snap = () => pg.evaluate(() => window.__state.asm.slice().sort().join(","));
+const s0 = await snap();
+await pg.mouse.click(pts[0].x, pts[0].y);
+await pg.waitForTimeout(700);
+const s1 = await snap();
+await pg.mouse.click(pts[0].x, pts[0].y);
+await pg.waitForTimeout(700);
+const s2 = await snap();
+ok("같은 지점 두 번 → 원복", s1 !== s0 && s2 === s0,
+  `${s0.split(",").length} → ${s1.split(",").length} → ${s2.split(",").length}`);
+
+await pg.evaluate(() => {
+  window.__state.asm = [];
+  const e = document.getElementById("asmMode");
+  e.checked = false; e.dispatchEvent(new Event("change", { bubbles: true }));
+});
+await pg.waitForTimeout(400);
 
 // ── 3d. 역 라벨 (글리프 의존 없음) ────────────────────────
 globalThis.__sec = "3d)";

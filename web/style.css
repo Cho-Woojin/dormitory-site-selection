@@ -275,7 +275,9 @@ body.has-hub #list {
   margin-left: auto; color: var(--ink); font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
-.ctl .hint { font-size: 11px; color: var(--ink-3); margin-top: 3px; }
+/* .ctl 안이 아닌 곳(합필 안내 등)에도 걸려야 한다. 범위를 좁혀 놨더니
+   한 곳이 스타일을 못 받아 혼자 큰 글씨로 나왔다. */
+.hint { font-size: 11px; color: var(--ink-3); margin-top: 3px; line-height: 1.5; }
 
 input[type="range"] {
   width: 100%; height: 18px; margin: 0; background: transparent;

@@ -1,0 +1,356 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 1600" width="1200" height="1600">
+<title>임대형기숙사 적합 필지 탐색 — 파라미터 36개</title>
+<style>
+  .f   { font-family: Pretendard, "Apple SD Gothic Neo", "Noto Sans KR", -apple-system, "Helvetica Neue", sans-serif; }
+  text { fill: #0b0b0b; }
+  .h1  { font-size: 25px; font-weight: 700; letter-spacing: -.01em; }
+  .sub { font-size: 11.5px; fill: #52514e; }
+  .lgl { font-size: 10px; font-weight: 700; fill: #7c7b76; letter-spacing: .08em; }
+  .lgt { font-size: 10px; fill: #52514e; }
+  .cnt { font-size: 11.5px; font-weight: 700; }
+  .cw1 { font-size: 11.5px; font-weight: 700; fill: #7a4d00; }
+  .cw2 { font-size: 10px; fill: #7a4d00; }
+  .th  { font-size: 9.5px; font-weight: 700; fill: #7c7b76; letter-spacing: .1em; }
+  .gh  { font-size: 12px; font-weight: 700; }
+  .gn  { font-size: 9.5px; fill: #7c7b76; }
+  .pm  { font-size: 11px; font-weight: 600; }
+  .vl  { font-size: 10.5px; fill: #2c2b28; }
+  .mo  { font-size: 9.5px; fill: #7c7b76; }
+  .bg  { font-size: 8.5px; font-weight: 700; }
+  .adj { font-size: 11px; }
+  .mu  { font-size: 9.5px; fill: #7c7b76; }
+  .wn  { font-size: 9.5px; fill: #7a4d00; }
+</style>
+
+<rect width="1200" height="1600" fill="#ffffff"/>
+<g class="f">
+
+<!-- ═════ HEADER ═════ -->
+<text class="h1" x="56" y="50">임대형기숙사 적합 필지 탐색 — 파라미터 36개</text>
+<text class="sub" x="56" y="74">땅을 고르는 판단을 숫자로 옮긴 것이다. 아래가 그 전부다. · 서울 25개 자치구 898,800 필지 → 후보 133,304</text>
+<line x1="56" y1="96" x2="1144" y2="96" stroke="#dcdcd8" stroke-width="1"/>
+
+<!-- 범례 -->
+<text class="lgl" x="56" y="129">근거</text>
+<rect x="96"  y="117" width="56" height="16" rx="8" fill="#e3edfa"/><text class="bg" x="124" y="128.5" text-anchor="middle" fill="#1c5cab">법·조례</text><text class="cnt" x="158" y="129">7</text>
+<rect x="201" y="117" width="56" height="16" rx="8" fill="#ddefea"/><text class="bg" x="229" y="128.5" text-anchor="middle" fill="#0f5f52">실측</text><text class="cnt" x="263" y="129">9</text>
+<rect x="306" y="117" width="56" height="16" rx="8" fill="#e2f0e6"/><text class="bg" x="334" y="128.5" text-anchor="middle" fill="#1f6b3a">시세</text><text class="cnt" x="368" y="129">3</text>
+<rect x="411" y="117" width="56" height="16" rx="8" fill="#fbeeda"/><text class="bg" x="439" y="128.5" text-anchor="middle" fill="#8a4b00">가정</text><text class="cnt" x="473" y="129">9</text>
+<rect x="516" y="117" width="56" height="16" rx="8" fill="#ececea"/><text class="bg" x="544" y="128.5" text-anchor="middle" fill="#55534e">선택</text><text class="cnt" x="578" y="129">8</text>
+
+<text class="lgl" x="660" y="129">조정</text>
+<text class="lgt" x="700" y="129">● 웹 슬라이더 11</text>
+<text class="lgt" x="830" y="129">○ 재빌드 필요 9</text>
+<text class="lgt" x="960" y="129">– 고정 16</text>
+
+<!-- 경고 박스 -->
+<rect x="56" y="150" width="1088" height="66" rx="6" fill="#fbf5e9" stroke="#e8d7b4" stroke-width="1"/>
+<text class="cw1" x="76" y="177">값이 아직 가정인 것 9개. 그중 7개가 사업비를 직접 움직인다.</text>
+<text class="cw2" x="76" y="198">단위공사비 · 철거비 · 전용률 · 실당 면적 · 공실률 · 실거래배율 · 실현계수 base — 실제 견적과 시세로 보정하기 전까지 결과를 투자 판단에 그대로 쓸 수 없다.</text>
+
+<!-- ═════ 표 머리 ═════ -->
+<text class="th" x="56"  y="260">파라미터</text>
+<text class="th" x="302" y="260">값</text>
+<text class="th" x="700" y="260">근거</text>
+<text class="th" x="784" y="260">조정</text>
+<text class="th" x="842" y="260">메모</text>
+<line x1="56" y1="268" x2="1144" y2="268" stroke="#0b0b0b" stroke-width="1.2"/>
+
+<!-- ───── G1 ───── -->
+<rect x="56" y="268" width="1088" height="32" fill="#f4f4f2"/>
+<rect x="56" y="268" width="3" height="32" fill="#2a78d6"/>
+<text class="gh" x="72" y="290">짓느냐 못 짓느냐 — 하드 필터</text>
+<text class="gn" x="1144" y="290" text-anchor="end">898,800 → 133,304 · 여기서 걸러진 필지는 순위에 들어가지 않는다</text>
+
+<text class="pm" x="56" y="318">지목</text>
+<text class="vl" x="302" y="318">대 · 공장용지 · 창고용지 · 주차장 · 주유소용지 · 잡종지</text>
+<rect x="700" y="306" width="56" height="16" rx="8" fill="#e3edfa"/><text class="bg" x="728" y="317.5" text-anchor="middle" fill="#1c5cab">법·조례</text>
+<text class="adj" x="802" y="318" text-anchor="middle" fill="#a8a7a2">–</text>
+<text class="mo" x="842" y="318">230,846 탈락</text>
+<line x1="56" y1="326" x2="1144" y2="326" stroke="#ececea" stroke-width="1"/>
+
+<text class="pm" x="56" y="344">용도지역</text>
+<text class="vl" x="302" y="344">공동주택 건축이 가능한 지역만</text>
+<rect x="700" y="332" width="56" height="16" rx="8" fill="#e3edfa"/><text class="bg" x="728" y="343.5" text-anchor="middle" fill="#1c5cab">법·조례</text>
+<text class="adj" x="802" y="344" text-anchor="middle" fill="#a8a7a2">–</text>
+<text class="mo" x="842" y="344">18,342 탈락</text>
+<line x1="56" y1="352" x2="1144" y2="352" stroke="#ececea" stroke-width="1"/>
+
+<text class="pm" x="56" y="370">토지이용상황</text>
+<text class="vl" x="302" y="370">아파트 · 연립 · 공원 · 도로 · 하천 · 자연림 등 14종 제외</text>
+<rect x="700" y="358" width="56" height="16" rx="8" fill="#ddefea"/><text class="bg" x="728" y="369.5" text-anchor="middle" fill="#0f5f52">실측</text>
+<text class="adj" x="802" y="370" text-anchor="middle" fill="#a8a7a2">–</text>
+<text class="mo" x="842" y="370">58,659 탈락</text>
+<line x1="56" y1="378" x2="1144" y2="378" stroke="#ececea" stroke-width="1"/>
+
+<text class="pm" x="56" y="396">도로접면</text>
+<text class="vl" x="302" y="396">맹지 · 세로한면(불) · 세로각지(불) 제외</text>
+<rect x="700" y="384" width="56" height="16" rx="8" fill="#ddefea"/><text class="bg" x="728" y="395.5" text-anchor="middle" fill="#0f5f52">실측</text>
+<text class="adj" x="802" y="396" text-anchor="middle" fill="#a8a7a2">–</text>
+<text class="mo" x="842" y="396">95,508 탈락 · "(불)" = 자동차 통행 불가</text>
+<line x1="56" y1="404" x2="1144" y2="404" stroke="#ececea" stroke-width="1"/>
+
+<text class="pm" x="56" y="422">최소 실 수</text>
+<text class="vl" x="302" y="422">20 실</text>
+<rect x="700" y="410" width="56" height="16" rx="8" fill="#e3edfa"/><text class="bg" x="728" y="421.5" text-anchor="middle" fill="#1c5cab">법·조례</text>
+<text class="adj" x="802" y="422" text-anchor="middle" fill="#2a78d6">●</text>
+<text class="mo" x="842" y="422">362,141 탈락 — 전체의 73%</text>
+
+<!-- ───── G2 ───── -->
+<rect x="56" y="430" width="1088" height="32" fill="#f4f4f2"/>
+<rect x="56" y="430" width="3" height="32" fill="#2a78d6"/>
+<text class="gh" x="72" y="452">지을 수 있는 양 — 용적률 · 실현계수</text>
+<text class="gn" x="1144" y="452" text-anchor="end">가용연면적 = 필지면적 × 적용용적률 × 실현계수</text>
+
+<text class="pm" x="56" y="480">적용용적률</text>
+<text class="vl" x="302" y="480">1종일반 150% ~ 준주거 400% · 17개 용도지역</text>
+<rect x="700" y="468" width="56" height="16" rx="8" fill="#e3edfa"/><text class="bg" x="728" y="479.5" text-anchor="middle" fill="#1c5cab">법·조례</text>
+<text class="adj" x="802" y="480" text-anchor="middle" fill="#a8a7a2">–</text>
+<text class="mo" x="842" y="480">필지마다 공간조인 — 구 단일값 금지</text>
+<line x1="56" y1="488" x2="1144" y2="488" stroke="#ececea" stroke-width="1"/>
+
+<text class="pm" x="56" y="506">2025 한시완화</text>
+<text class="vl" x="302" y="506">2종 200 → 250% · 3종 250 → 300%</text>
+<rect x="700" y="494" width="56" height="16" rx="8" fill="#e3edfa"/><text class="bg" x="728" y="505.5" text-anchor="middle" fill="#1c5cab">법·조례</text>
+<text class="adj" x="802" y="506" text-anchor="middle" fill="#7c7b76">○</text>
+<text class="mo" x="842" y="506">2028.05.18 까지 · 끄면 결과가 달라진다</text>
+<line x1="56" y1="514" x2="1144" y2="514" stroke="#ececea" stroke-width="1"/>
+
+<text class="pm" x="56" y="532">상업지역 주거 상한</text>
+<text class="vl" x="302" y="532">400%</text>
+<rect x="700" y="520" width="56" height="16" rx="8" fill="#e3edfa"/><text class="bg" x="728" y="531.5" text-anchor="middle" fill="#1c5cab">법·조례</text>
+<text class="adj" x="802" y="532" text-anchor="middle" fill="#a8a7a2">–</text>
+<text class="mo" x="842" y="532">기숙사 = 준주택 = 주거용</text>
+<line x1="56" y1="540" x2="1144" y2="540" stroke="#ececea" stroke-width="1"/>
+
+<text class="pm" x="56" y="558">실현계수 base</text>
+<text class="vl" x="302" y="558">0.90</text>
+<rect x="700" y="546" width="56" height="16" rx="8" fill="#fbeeda"/><text class="bg" x="728" y="557.5" text-anchor="middle" fill="#8a4b00">가정</text>
+<text class="adj" x="802" y="558" text-anchor="middle" fill="#7c7b76">○</text>
+<text class="mo" x="842" y="558">사선제한 · 주차 감가 · 결과 중위 0.83</text>
+<line x1="56" y1="566" x2="1144" y2="566" stroke="#ececea" stroke-width="1"/>
+
+<text class="pm" x="56" y="584">형상계수</text>
+<text class="vl" x="302" y="584">정방형 1.00 · 가로장방 0.98 · 세로장방 0.95</text>
+<text class="vl" x="302" y="600">사다리형 0.92 · 부정형 0.85 · 자루형 0.75</text>
+<rect x="700" y="572" width="56" height="16" rx="8" fill="#ddefea"/><text class="bg" x="728" y="583.5" text-anchor="middle" fill="#0f5f52">실측</text>
+<text class="adj" x="802" y="584" text-anchor="middle" fill="#a8a7a2">–</text>
+<text class="mo" x="842" y="584">토지특성정보 A22 — 상수를 쓰지 않는다</text>
+<line x1="56" y1="610" x2="1144" y2="610" stroke="#ececea" stroke-width="1"/>
+
+<text class="pm" x="56" y="628">경사계수</text>
+<text class="vl" x="302" y="628">평지 1.00 · 저지 0.97 · 완경사 0.95 · 급경사 0.85 · 고지 0.85</text>
+<rect x="700" y="616" width="56" height="16" rx="8" fill="#ddefea"/><text class="bg" x="728" y="627.5" text-anchor="middle" fill="#0f5f52">실측</text>
+<text class="adj" x="802" y="628" text-anchor="middle" fill="#a8a7a2">–</text>
+<text class="mo" x="842" y="628">토지특성정보 A20</text>
+<line x1="56" y1="636" x2="1144" y2="636" stroke="#ececea" stroke-width="1"/>
+
+<text class="pm" x="56" y="654">전용률</text>
+<text class="vl" x="302" y="654">0.65</text>
+<rect x="700" y="642" width="56" height="16" rx="8" fill="#fbeeda"/><text class="bg" x="728" y="653.5" text-anchor="middle" fill="#8a4b00">가정</text>
+<text class="adj" x="802" y="654" text-anchor="middle" fill="#7c7b76">○</text>
+<text class="mo" x="842" y="654">연면적 → 실면적</text>
+<line x1="56" y1="662" x2="1144" y2="662" stroke="#ececea" stroke-width="1"/>
+
+<text class="pm" x="56" y="680">실당 면적</text>
+<text class="vl" x="302" y="680">16 ㎡</text>
+<rect x="700" y="668" width="56" height="16" rx="8" fill="#fbeeda"/><text class="bg" x="728" y="679.5" text-anchor="middle" fill="#8a4b00">가정</text>
+<text class="adj" x="802" y="680" text-anchor="middle" fill="#2a78d6">●</text>
+<text class="mo" x="842" y="680">20실 = 연면적 492㎡ 필요</text>
+
+<!-- ───── G3 ───── -->
+<rect x="56" y="688" width="1088" height="32" fill="#f4f4f2"/>
+<rect x="56" y="688" width="3" height="32" fill="#2a78d6"/>
+<text class="gh" x="72" y="710">돈 — S₁ 사업성</text>
+<text class="gn" x="1144" y="710" text-anchor="end">S₁ = NOI ÷ 순투자금 · 후보 중위 3.64%</text>
+
+<text class="pm" x="56" y="738">개별공시지가</text>
+<text class="vl" x="302" y="738">필지별 실측값</text>
+<rect x="700" y="726" width="56" height="16" rx="8" fill="#ddefea"/><text class="bg" x="728" y="737.5" text-anchor="middle" fill="#0f5f52">실측</text>
+<text class="adj" x="802" y="738" text-anchor="middle" fill="#a8a7a2">–</text>
+<text class="mo" x="842" y="738">공시 2026.04.30 · 수익률과 상관 −0.74</text>
+<line x1="56" y1="746" x2="1144" y2="746" stroke="#ececea" stroke-width="1"/>
+
+<text class="pm" x="56" y="764">공시지가 → 실거래 배율</text>
+<text class="vl" x="302" y="764">1.50</text>
+<rect x="700" y="752" width="56" height="16" rx="8" fill="#fbeeda"/><text class="bg" x="728" y="763.5" text-anchor="middle" fill="#8a4b00">가정</text>
+<text class="adj" x="802" y="764" text-anchor="middle" fill="#2a78d6">●</text>
+<text class="mo" x="842" y="764">통상 1.4 ~ 1.7</text>
+<line x1="56" y1="772" x2="1144" y2="772" stroke="#ececea" stroke-width="1"/>
+
+<text class="pm" x="56" y="790">단위공사비</text>
+<text class="vl" x="302" y="790">250 만원 / ㎡</text>
+<rect x="700" y="778" width="56" height="16" rx="8" fill="#fbeeda"/><text class="bg" x="728" y="789.5" text-anchor="middle" fill="#8a4b00">가정</text>
+<text class="adj" x="802" y="790" text-anchor="middle" fill="#2a78d6">●</text>
+<text class="mo" x="842" y="790">연면적 기준 · 실제 견적 대조 필요</text>
+<line x1="56" y1="798" x2="1144" y2="798" stroke="#ececea" stroke-width="1"/>
+
+<text class="pm" x="56" y="816">부대비율</text>
+<text class="vl" x="302" y="816">0.20</text>
+<rect x="700" y="804" width="56" height="16" rx="8" fill="#fbeeda"/><text class="bg" x="728" y="815.5" text-anchor="middle" fill="#8a4b00">가정</text>
+<text class="adj" x="802" y="816" text-anchor="middle" fill="#7c7b76">○</text>
+<text class="mo" x="842" y="816">설계 · 감리 · 금융</text>
+<line x1="56" y1="824" x2="1144" y2="824" stroke="#ececea" stroke-width="1"/>
+
+<text class="pm" x="56" y="842">철거비</text>
+<text class="vl" x="302" y="842">10 만원 / ㎡</text>
+<rect x="700" y="830" width="56" height="16" rx="8" fill="#fbeeda"/><text class="bg" x="728" y="841.5" text-anchor="middle" fill="#8a4b00">가정</text>
+<text class="adj" x="802" y="842" text-anchor="middle" fill="#7c7b76">○</text>
+<text class="mo" x="842" y="842">후보의 90%에 건물이 서 있다</text>
+<line x1="56" y1="850" x2="1144" y2="850" stroke="#ececea" stroke-width="1"/>
+
+<text class="pm" x="56" y="868">실당 월임대료</text>
+<text class="vl" x="302" y="868">85 만원</text>
+<rect x="700" y="856" width="56" height="16" rx="8" fill="#e2f0e6"/><text class="bg" x="728" y="867.5" text-anchor="middle" fill="#1f6b3a">시세</text>
+<text class="adj" x="802" y="868" text-anchor="middle" fill="#2a78d6">●</text>
+<text class="mo" x="842" y="868">맹그로브 신설 79.8만(~15㎡) 환산</text>
+<line x1="56" y1="876" x2="1144" y2="876" stroke="#ececea" stroke-width="1"/>
+
+<text class="pm" x="56" y="894">임대료 지역지수</text>
+<text class="vl" x="302" y="894">0.51 ~ 2.12 · 기준 성북구 1.00</text>
+<rect x="700" y="882" width="56" height="16" rx="8" fill="#ddefea"/><text class="bg" x="728" y="893.5" text-anchor="middle" fill="#0f5f52">실측</text>
+<text class="adj" x="802" y="894" text-anchor="middle" fill="#7c7b76">○</text>
+<text class="mo" x="842" y="894">법정동 전월세 실거래 107만 건</text>
+<line x1="56" y1="902" x2="1144" y2="902" stroke="#ececea" stroke-width="1"/>
+
+<text class="pm" x="56" y="920">실당 보증금</text>
+<text class="vl" x="302" y="920">500 만원</text>
+<rect x="700" y="908" width="56" height="16" rx="8" fill="#e2f0e6"/><text class="bg" x="728" y="919.5" text-anchor="middle" fill="#1f6b3a">시세</text>
+<text class="adj" x="802" y="920" text-anchor="middle" fill="#2a78d6">●</text>
+<text class="mo" x="842" y="920">코리빙 관행 300 ~ 500 만원</text>
+<line x1="56" y1="928" x2="1144" y2="928" stroke="#ececea" stroke-width="1"/>
+
+<text class="pm" x="56" y="946">공실률</text>
+<text class="vl" x="302" y="946">0.05</text>
+<rect x="700" y="934" width="56" height="16" rx="8" fill="#fbeeda"/><text class="bg" x="728" y="945.5" text-anchor="middle" fill="#8a4b00">가정</text>
+<text class="adj" x="802" y="946" text-anchor="middle" fill="#7c7b76">○</text>
+<text class="mo" x="842" y="946">5% = 연 18일 공실에 해당</text>
+<line x1="56" y1="954" x2="1144" y2="954" stroke="#ececea" stroke-width="1"/>
+
+<text class="pm" x="56" y="972">운영비율</text>
+<text class="vl" x="302" y="972">0.40</text>
+<rect x="700" y="960" width="56" height="16" rx="8" fill="#e2f0e6"/><text class="bg" x="728" y="971.5" text-anchor="middle" fill="#1f6b3a">시세</text>
+<text class="adj" x="802" y="972" text-anchor="middle" fill="#7c7b76">○</text>
+<text class="mo" x="842" y="972">코리빙 — 관리비 · 공과금 · 청소 포함</text>
+<line x1="56" y1="980" x2="1144" y2="980" stroke="#ececea" stroke-width="1"/>
+
+<text class="pm" x="56" y="998">수익률 분모</text>
+<text class="vl" x="302" y="998">순투자금 = 총사업비 − 보증금</text>
+<rect x="700" y="986" width="56" height="16" rx="8" fill="#ececea"/><text class="bg" x="728" y="997.5" text-anchor="middle" fill="#55534e">선택</text>
+<text class="adj" x="802" y="998" text-anchor="middle" fill="#2a78d6">●</text>
+<text class="mo" x="842" y="998">총사업비 · 토지비로 전환 가능</text>
+
+<!-- ───── G4 ───── -->
+<rect x="56" y="1006" width="1088" height="32" fill="#f4f4f2"/>
+<rect x="56" y="1006" width="3" height="32" fill="#2a78d6"/>
+<text class="gh" x="72" y="1028">빛 — S₂ 일조환경</text>
+<text class="gn" x="1144" y="1028" text-anchor="end">남측 인접 건물을 올려다본 앙각이 태양고도를 넘으면 동지에 직사광이 막힌다</text>
+
+<text class="pm" x="56" y="1056">기준 태양고도</text>
+<text class="vl" x="302" y="1056">28.97°</text>
+<rect x="700" y="1044" width="56" height="16" rx="8" fill="#ddefea"/><text class="bg" x="728" y="1055.5" text-anchor="middle" fill="#0f5f52">실측</text>
+<text class="adj" x="802" y="1056" text-anchor="middle" fill="#a8a7a2">–</text>
+<text class="mo" x="842" y="1056">동지 정오 · 90° − 37.59° − 23.44°</text>
+<line x1="56" y1="1064" x2="1144" y2="1064" stroke="#ececea" stroke-width="1"/>
+
+<text class="pm" x="56" y="1082">탐색 범위</text>
+<text class="vl" x="302" y="1082">남측 135° ~ 225° · 15° 간격 7섹터 · 반경 50 m</text>
+<rect x="700" y="1070" width="56" height="16" rx="8" fill="#ececea"/><text class="bg" x="728" y="1081.5" text-anchor="middle" fill="#55534e">선택</text>
+<text class="adj" x="802" y="1082" text-anchor="middle" fill="#a8a7a2">–</text>
+<text class="mo" x="842" y="1082">정남에 가까울수록 가중치가 크다</text>
+<line x1="56" y1="1090" x2="1144" y2="1090" stroke="#ececea" stroke-width="1"/>
+
+<text class="pm" x="56" y="1108">건물 층고</text>
+<text class="vl" x="302" y="1108">3.25 m</text>
+<rect x="700" y="1096" width="56" height="16" rx="8" fill="#ddefea"/><text class="bg" x="728" y="1107.5" text-anchor="middle" fill="#0f5f52">실측</text>
+<text class="adj" x="802" y="1108" text-anchor="middle" fill="#a8a7a2">–</text>
+<text class="mo" x="842" y="1108">높이 ÷ 층수 중위 (IQR 2.94 ~ 3.75)</text>
+<line x1="56" y1="1116" x2="1144" y2="1116" stroke="#ececea" stroke-width="1"/>
+
+<text class="pm" x="56" y="1134">남측 접도 보너스</text>
+<text class="vl" x="302" y="1134">최대 0.25 · 도로폭 12 m 기준</text>
+<rect x="700" y="1122" width="56" height="16" rx="8" fill="#fbeeda"/><text class="bg" x="728" y="1133.5" text-anchor="middle" fill="#8a4b00">가정</text>
+<text class="adj" x="802" y="1134" text-anchor="middle" fill="#a8a7a2">–</text>
+<text class="mo" x="842" y="1134">도로는 영구히 열려 있다</text>
+<line x1="56" y1="1142" x2="1144" y2="1142" stroke="#ececea" stroke-width="1"/>
+
+<text class="pm" x="56" y="1160">인접 나대지</text>
+<text class="vl" x="302" y="1160">용도지역 상한까지 건물이 선다고 본다</text>
+<rect x="700" y="1148" width="56" height="16" rx="8" fill="#ececea"/><text class="bg" x="728" y="1159.5" text-anchor="middle" fill="#55534e">선택</text>
+<text class="adj" x="802" y="1160" text-anchor="middle" fill="#a8a7a2">–</text>
+<text class="mo" x="842" y="1160">지금 비었다고 점수를 주면 위험하다</text>
+
+<!-- ───── G5 ───── -->
+<rect x="56" y="1168" width="1088" height="32" fill="#f4f4f2"/>
+<rect x="56" y="1168" width="3" height="32" fill="#2a78d6"/>
+<text class="gh" x="72" y="1190">거리 — S₃ 역세권 등급</text>
+<text class="gn" x="1144" y="1190" text-anchor="end">계단식 — 같은 등급 안에서는 동급으로 본다</text>
+
+<text class="pm" x="56" y="1218">등급 임계</text>
+<text class="vl" x="302" y="1218">A ≤ 250 · B ≤ 500 · C ≤ 750 · D ≤ 1,000 m</text>
+<rect x="700" y="1206" width="56" height="16" rx="8" fill="#ececea"/><text class="bg" x="728" y="1217.5" text-anchor="middle" fill="#55534e">선택</text>
+<text class="adj" x="802" y="1218" text-anchor="middle" fill="#2a78d6">●</text>
+<text class="mo" x="842" y="1218">직선거리 · 도보 3 · 7 · 10 · 13분</text>
+<line x1="56" y1="1226" x2="1144" y2="1226" stroke="#ececea" stroke-width="1"/>
+
+<text class="pm" x="56" y="1244">동북선 (건설중)</text>
+<text class="vl" x="302" y="1244">제외</text>
+<rect x="700" y="1232" width="56" height="16" rx="8" fill="#ececea"/><text class="bg" x="728" y="1243.5" text-anchor="middle" fill="#55534e">선택</text>
+<text class="adj" x="802" y="1244" text-anchor="middle" fill="#7c7b76">○</text>
+<text class="mo" x="842" y="1244">2027.11 개통 예정 · 역명 미확정</text>
+
+<!-- ───── G6 ───── -->
+<rect x="56" y="1252" width="1088" height="32" fill="#f4f4f2"/>
+<rect x="56" y="1252" width="3" height="32" fill="#2a78d6"/>
+<text class="gh" x="72" y="1274">순서 — 계층 정렬</text>
+<text class="gn" x="1144" y="1274" text-anchor="end">가중합이 아니다 · 정렬키 = band₁↑ · band₂↑ · 등급↑ · S₁↓</text>
+
+<text class="pm" x="56" y="1302">tol₁ 사업성 오차범위</text>
+<text class="vl" x="302" y="1302">5 %p</text>
+<rect x="700" y="1290" width="56" height="16" rx="8" fill="#ececea"/><text class="bg" x="728" y="1301.5" text-anchor="middle" fill="#55534e">선택</text>
+<text class="adj" x="802" y="1302" text-anchor="middle" fill="#2a78d6">●</text>
+<text class="mo" x="842" y="1302">0 → 200 · 5 → 165 · 20 → 51</text>
+<line x1="56" y1="1310" x2="1144" y2="1310" stroke="#ececea" stroke-width="1"/>
+
+<text class="pm" x="56" y="1328">tol₂ 일조 오차범위</text>
+<text class="vl" x="302" y="1328">10 %p</text>
+<rect x="700" y="1316" width="56" height="16" rx="8" fill="#ececea"/><text class="bg" x="728" y="1327.5" text-anchor="middle" fill="#55534e">선택</text>
+<text class="adj" x="802" y="1328" text-anchor="middle" fill="#2a78d6">●</text>
+<text class="mo" x="842" y="1328">상위 200 중 사업성 순위와 겹치는 수</text>
+
+<!-- ───── G7 ───── -->
+<rect x="56" y="1336" width="1088" height="32" fill="#f4f4f2"/>
+<rect x="56" y="1336" width="3" height="32" fill="#2a78d6"/>
+<text class="gh" x="72" y="1358">묶기 — 합필 · 거점</text>
+<text class="gn" x="1144" y="1358" text-anchor="end">합필의 가치는 수익률이 아니라 규모다 (중위 +0.12%p)</text>
+
+<text class="pm" x="56" y="1386">합필 형상계수</text>
+<text class="vl" x="302" y="1386">0.70 + 0.32 × (면적 ÷ 최소회전외접사각형)</text>
+<rect x="700" y="1374" width="56" height="16" rx="8" fill="#ddefea"/><text class="bg" x="728" y="1385.5" text-anchor="middle" fill="#0f5f52">실측</text>
+<text class="adj" x="802" y="1386" text-anchor="middle" fill="#a8a7a2">–</text>
+<text class="mo" x="842" y="1386">합필 실형상에서 다시 구한다</text>
+<line x1="56" y1="1394" x2="1144" y2="1394" stroke="#ececea" stroke-width="1"/>
+
+<text class="pm" x="56" y="1412">지구단위계획 임계</text>
+<text class="vl" x="302" y="1412">준공업 3,000 ㎡</text>
+<rect x="700" y="1400" width="56" height="16" rx="8" fill="#e3edfa"/><text class="bg" x="728" y="1411.5" text-anchor="middle" fill="#1c5cab">법·조례</text>
+<text class="adj" x="802" y="1412" text-anchor="middle" fill="#a8a7a2">–</text>
+<text class="mo" x="842" y="1412">넘으면 수립 의무 — 수년 소요</text>
+<line x1="56" y1="1420" x2="1144" y2="1420" stroke="#ececea" stroke-width="1"/>
+
+<text class="pm" x="56" y="1438">거점 최소 이격</text>
+<text class="vl" x="302" y="1438">1,000 m</text>
+<rect x="700" y="1426" width="56" height="16" rx="8" fill="#ececea"/><text class="bg" x="728" y="1437.5" text-anchor="middle" fill="#55534e">선택</text>
+<text class="adj" x="802" y="1438" text-anchor="middle" fill="#2a78d6">●</text>
+<text class="mo" x="842" y="1438">상위 30 중 21개가 100m 이내</text>
+<line x1="56" y1="1446" x2="1144" y2="1446" stroke="#0b0b0b" stroke-width="1.2"/>
+
+<text class="mu" x="56" y="1472">값은 config/params.yaml 한 곳에서 관리한다. 고치고 파이프라인을 다시 돌리면 서울 898,800 필지 전부에 반영된다.</text>
+
+<!-- ═════ FOOTER ═════ -->
+<line x1="56" y1="1500" x2="1144" y2="1500" stroke="#dcdcd8" stroke-width="1"/>
+<text class="mu" x="56" y="1522">데이터 — 토지특성정보 2026.05.13 · GIS건물통합정보 2026.08.09 · 개별공시지가 2026.04.30 · 서울시 도시계획조례 시행 2026.07.13</text>
+<text class="wn" x="56" y="1542">근거 표기 — 법·조례: 원문 대조 · 실측: 데이터에 실린 값 · 시세: 시장 자료로 확인 · 가정: 미검증 추정 · 선택: 설계자가 정한 값</text>
+
+</g>
+</svg>
